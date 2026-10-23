@@ -114,33 +114,40 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
-		/** 侧边栏图标：安静，只在有问题时点一个点。 */
+		/** 侧边栏图标：安静，只有 High（真需要人处理）才亮红点；修完立刻消失。 */
 		function SidebarIcon(props) {
 			const size = props !== null && props !== undefined && typeof props.size === 'number' ? props.size : 18
-			const [state, setState] = React.useState({ level: 'idle', count: 0 })
+			const [highCount, setHighCount] = React.useState(0)
 			React.useEffect(() => {
 				let cancelled = false
 				const load = () => {
 					fetchStatus().then((data) => {
 						if (cancelled) return
 						const list = Array.isArray(data.findings) ? data.findings : []
-						const high = list.filter(item => item.severity === 'high').length
-						const medium = list.filter(item => item.severity === 'medium').length
-						setState({ level: high > 0 ? 'high' : medium > 0 ? 'medium' : 'idle', count: high + medium })
-					}, () => { /* 取不到就保持安静 */ })
+						setHighCount(list.filter(item => item.severity === 'high').length)
+					}, () => { /* 取不到就保持现状 */ })
 				}
 				load()
-				const timer = setInterval(load, 60000)
-				return () => { cancelled = true; clearInterval(timer) }
+				const timer = setInterval(load, 30000)
+				// 面板里每次修复/逃生后都会发这个事件，图标立刻重算，不用等轮询。
+				const onRefresh = () => load()
+				window.addEventListener('dsh-doctor:refresh', onRefresh)
+				return () => {
+					cancelled = true
+					clearInterval(timer)
+					window.removeEventListener('dsh-doctor:refresh', onRefresh)
+				}
 			}, [])
-			const dotColor = state.level === 'high'
-				? 'var(--dsw-alias-state-error-primary)'
-				: state.level === 'medium' ? 'var(--dsw-alias-state-warning-primary,#d97706)' : 'transparent'
-			return h('svg', { width: size, height: size, viewBox: '0 0 24 24', 'aria-hidden': true },
+			const showDot = highCount > 0
+			return h('svg', {
+				width: size, height: size, viewBox: '0 0 24 24', 'aria-hidden': true,
+				role: 'img', 'aria-label': showDot ? ('私人医生：' + highCount + ' 个高危问题') : '私人医生：一切正常',
+			},
+				showDot ? h('title', null, highCount + ' 个高危问题，点开处理') : h('title', null, '私人医生：一切正常'),
 				h('circle', { cx: 12, cy: 11, r: 6.5, fill: 'none', stroke: 'currentColor', strokeWidth: 1.8 }),
 				h('path', { d: 'M12 11v4.5', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' }),
 				h('path', { d: 'M12 5.5V4', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
-				h('circle', { cx: 18.5, cy: 5.5, r: 3.2, fill: dotColor }),
+				showDot ? h('circle', { cx: 18.5, cy: 5.5, r: 3.2, fill: 'var(--dsw-alias-state-error-primary)' }) : null,
 			)
 		}
 
@@ -200,6 +207,7 @@ window.__ModuleLoader__.load({
 					setMessage({ ok: false, text: '逃生请求失败：' + String(reason && reason.message ? reason.message : reason) })
 				}).then(() => {
 					setRescuing(false)
+					notifyStatusChanged()
 					refresh()
 				})
 			}
@@ -214,6 +222,7 @@ window.__ModuleLoader__.load({
 					setMessage({ ok: false, text: '修复请求失败：' + String(reason && reason.message ? reason.message : reason) })
 				}).then(() => {
 					setPending(null)
+					notifyStatusChanged()
 					refresh()
 				})
 			}
@@ -309,6 +318,11 @@ window.__ModuleLoader__.load({
 				order: 30,
 				label: () => '私人医生',
 			}, SidebarIcon))
+		}
+
+		/** 修复/逃生之后通知侧边栏图标立刻重算状态。 */
+		function notifyStatusChanged() {
+			try { window.dispatchEvent(new CustomEvent('dsh-doctor:refresh')) } catch (error) { /* ignore */ }
 		}
 
 		exports.apply = apply

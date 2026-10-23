@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1 — 2026-10-23
+
+- **侧边栏红点只对 High 亮**：Medium（历史崩溃日志之类）不再点亮提示点，修复完成后点立刻消失。
+- 修复/逃生成功后广播状态变更，图标立即重算，不用等 30 秒轮询。
+- 图标新增 `title` / `aria-label`，悬停就能看到"还有几个高危问题"。
+- PS 端补上 `restore-patch-layer`；`workspace-entry` 的兜底路径改成结构级删除（不再按字符串抠 JSON）。
+
 ## v0.3.0 — 2026-10-23
 
 - **修复录（history）**：每次修复落 `~/.dsh/dsh-doctor/history.jsonl`（时间 / 动作 / 结果 / 备份路径），面板底部显示最近 8 条，接口 `GET /dsh-doctor/history`。
