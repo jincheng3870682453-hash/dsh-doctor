@@ -51,13 +51,13 @@ window.__ModuleLoader__.load({
 .dshdr-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;
   border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}
 .dshdr-err{color:var(--dsw-alias-state-error-primary);font-size:12px}
-.dshdr-toast{position:fixed;top:16px;right:16px;z-index:1200;max-width:min(420px,calc(100vw - 32px));
-  padding:10px 14px;border-radius:10px;background:var(--dsw-alias-bg-overlay,#fff);
-  border:1px solid var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent,0 10px 30px rgba(0,0,0,.18));
-  color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;
-  animation:dshdr-toast-in 180ms ease-out}
+/* 结果提示放在面板内容流里（不是浮层）：不盖窗口控件，也不盖面板按钮。 */
+.dshdr-toast{display:block;width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;
+  background:var(--dsw-alias-interactive-bg-hover);border:1px solid var(--dsw-alias-border-l1);
+  color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;white-space:pre-line;
+  animation:dshdr-toast-in 160ms ease-out}
 .dshdr-toast-bad{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
-@keyframes dshdr-toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes dshdr-toast-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 `
 
 		let styleElement = null
@@ -187,7 +187,6 @@ window.__ModuleLoader__.load({
 			const [loading, setLoading] = React.useState(false)
 			const [rescuing, setRescuing] = React.useState(false)
 			const [error, setError] = React.useState(null)
-			const [message, setMessage] = React.useState(null)
 			const [pending, setPending] = React.useState(null)
 			const [toast, setToast] = React.useState(null)
 			const [rescueArmed, setRescueArmed] = React.useState(false)
@@ -195,7 +194,9 @@ window.__ModuleLoader__.load({
 			// 每条消息 6 秒后自己消失（"完成后弹个消息"）。
 			React.useEffect(() => {
 				if (toast === null) return undefined
-				const timer = setTimeout(() => setToast(null), 6000)
+				// 多行的交接报告多留一会儿，单行结果 6 秒就够。
+				const duration = String(toast.text).indexOf('\n') >= 0 ? 15000 : 6000
+				const timer = setTimeout(() => setToast(null), duration)
 				return () => clearTimeout(timer)
 			}, [toast])
 
@@ -230,22 +231,18 @@ window.__ModuleLoader__.load({
 				if (!rescueArmed && fixable > 0) {
 					setRescueArmed(true)
 					const text = '还有 ' + fixable + ' 个可以一键修好的问题，建议先点「一键修复」。确实修不好、要现在开网页版逃生，就再点一次「起网页版」。'
-					setMessage({ ok: false, text })
-					setToast({ ok: false, text })
+										setToast({ ok: false, text })
 					return
 				}
 				setRescueArmed(false)
 				setRescuing(true)
-				setMessage(null)
-				startRescue().then((result) => {
+								startRescue().then((result) => {
 					const ok = result !== null && result.ok === true
 					const text = String(result !== null && result.message ? result.message : '完成')
-					setMessage({ ok, text })
-					setToast({ ok, text })
+										setToast({ ok, text })
 				}, (reason) => {
 					const text = '逃生请求失败：' + String(reason && reason.message ? reason.message : reason)
-					setMessage({ ok: false, text })
-					setToast({ ok: false, text })
+										setToast({ ok: false, text })
 				}).then(() => {
 					setRescuing(false)
 					notifyStatusChanged()
@@ -256,16 +253,13 @@ window.__ModuleLoader__.load({
 			const onFix = (fixId, label) => {
 				if (typeof fixId !== 'string' || fixId.length === 0) return
 				setPending(fixId)
-				setMessage(null)
-				applyFix(fixId).then((result) => {
+								applyFix(fixId).then((result) => {
 					const ok = result !== null && result.ok === true
 					const text = String(result !== null && result.message ? result.message : '完成')
-					setMessage({ ok, text })
-					setToast({ ok, text })
+										setToast({ ok, text })
 				}, (reason) => {
 					const text = '修复请求失败：' + String(reason && reason.message ? reason.message : reason)
-					setMessage({ ok: false, text })
-					setToast({ ok: false, text })
+										setToast({ ok: false, text })
 				}).then(() => {
 					setPending(null)
 					notifyStatusChanged()
@@ -297,8 +291,6 @@ window.__ModuleLoader__.load({
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
 					),
 				),
-
-				message !== null && h('div', { className: 'dshdr-msg', style: message.ok ? {} : { color: 'var(--dsw-alias-state-error-primary)' } }, message.text),
 
 				toast !== null
 					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
