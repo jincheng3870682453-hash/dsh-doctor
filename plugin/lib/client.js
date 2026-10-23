@@ -46,7 +46,7 @@ window.__ModuleLoader__.load({
 .dshdr-ok{color:var(--dsw-alias-state-success-primary,#15803d);font-weight:600}
 .dshdr-empty{padding:28px;text-align:center;color:var(--dsw-alias-label-tertiary);
   border:1px dashed var(--dsw-alias-border-l2);border-radius:12px}
-.dshdr-msg{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;
+.dshdr-msg{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;white-space:pre-line;
   background:var(--dsw-alias-interactive-bg-hover)}
 .dshdr-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;
   border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}
@@ -190,6 +190,7 @@ window.__ModuleLoader__.load({
 			const [message, setMessage] = React.useState(null)
 			const [pending, setPending] = React.useState(null)
 			const [toast, setToast] = React.useState(null)
+			const [rescueArmed, setRescueArmed] = React.useState(false)
 
 			// 每条消息 6 秒后自己消失（"完成后弹个消息"）。
 			React.useEffect(() => {
@@ -199,6 +200,7 @@ window.__ModuleLoader__.load({
 			}, [toast])
 
 			const refresh = React.useCallback(() => {
+				setRescueArmed(false)
 				setLoading(true)
 				fetchStatus().then((data) => {
 					setStatus(data)
@@ -223,6 +225,16 @@ window.__ModuleLoader__.load({
 			React.useEffect(() => { refresh() }, [refresh])
 
 			const onRescue = () => {
+				// 网页版是最后一招：还有能一键修的问题时，先劝一次，再点才放行。
+				const fixable = status !== null && status.summary !== undefined ? (Number(status.summary.fixableHigh) || 0) : 0
+				if (!rescueArmed && fixable > 0) {
+					setRescueArmed(true)
+					const text = '还有 ' + fixable + ' 个可以一键修好的问题，建议先点「一键修复」。确实修不好、要现在开网页版逃生，就再点一次「起网页版」。'
+					setMessage({ ok: false, text })
+					setToast({ ok: false, text })
+					return
+				}
+				setRescueArmed(false)
 				setRescuing(true)
 				setMessage(null)
 				startRescue().then((result) => {

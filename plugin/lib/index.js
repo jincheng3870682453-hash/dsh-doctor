@@ -602,7 +602,6 @@ function environment() {
 		packDir: PACK_DIR(),
 		packs: existsSync(PACK_DIR()) ? readdirSync(PACK_DIR()).filter(name => name.toLowerCase().endsWith('.json')) : [],
 		node: process.version,
-		platform: process.platform,
 		at: new Date().toISOString(),
 	}
 }
@@ -878,6 +877,81 @@ async function waitForHttp(url, timeoutMs) {
 	return false
 }
 
+function stampForFile() {
+	const now = new Date()
+	const pad = (value) => String(value).padStart(2, '0')
+	return String(now.getFullYear()) + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes())
+}
+
+/** 逃生时给网页版 DSH 的交接报告：现状 + 问题清单 + 已经试过什么。 */
+function writeHandoffReport() {
+	try {
+		const findings = scan()
+		const env = environment()
+		const history = readHistory(10)
+		const lines = []
+		lines.push('# DSH 桌面端 · 交接报告')
+		lines.push('')
+		lines.push('> 生成时间：' + new Date().toLocaleString() + '　平台：' + env.platform + '　工具：dsh-doctor')
+		lines.push('> 这份文件由桌面端「私人医生」生成。把它拖给网页版 DSH，让它接着修。')
+		lines.push('')
+		lines.push('## 先把这段话发给我')
+		lines.push('')
+		lines.push('```text')
+		lines.push('我是从 DSH 桌面端逃过来的：桌面端起不来，或者我修不好。')
+		lines.push('这是桌面端「私人医生」生成的交接报告（本文件）。请按下面的清单逐条帮我处理：')
+		lines.push('每一条都告诉我改了哪些文件、怎么验证、怎么回滚。')
+		lines.push('注意：网页版和桌面端共享同一个 ~/.dsh，修的是同一份数据。')
+		lines.push('```')
+		lines.push('')
+		lines.push('## 体检结果（' + findings.length + ' 条）')
+		lines.push('')
+		if (findings.length === 0) {
+			lines.push('_没有发现问题，可能是启动链路本身的问题，先看崩溃日志。_')
+		}
+		for (const item of findings) {
+			lines.push('### [' + item.severity + '] ' + item.title)
+			lines.push('')
+			if (item.path) lines.push('- 路径：`' + item.path + '`')
+			if (item.detail) lines.push('- 说明：' + item.detail)
+			lines.push('- 可一键修：' + (item.fixId ? '是（' + item.fixId + '）' : '否，需要人工判断'))
+			lines.push('')
+		}
+		lines.push('## 已经试过的修复')
+		lines.push('')
+		if (history.length === 0) {
+			lines.push('_还没有执行过修复。_')
+		} else {
+			for (const entry of history) {
+				lines.push('- ' + entry.at + '　' + entry.id + '　' + (entry.ok === true ? '成功' : '失败') + (entry.backup ? '　备份：`' + entry.backup + '`' : ''))
+				if (entry.message) lines.push('  - ' + entry.message)
+			}
+		}
+		lines.push('')
+		lines.push('## 环境')
+		lines.push('')
+		lines.push('- DSH 目录：`' + env.dshHome + '`')
+		lines.push('- 桌面目录：`' + env.desktop + '`')
+		lines.push('- profile：' + (Array.isArray(env.profiles) ? env.profiles.join('、') : ''))
+		lines.push('- 检查包：' + (Array.isArray(env.packs) && env.packs.length > 0 ? env.packs.join('、') : '无'))
+		lines.push('- Node：' + env.node)
+		lines.push('')
+		lines.push('## 建议的下一步')
+		lines.push('')
+		lines.push('1. 先按上面「可一键修：是」的条目逐条处理（每条都先备份、再改、再验证）。')
+		lines.push('2. 修完重启桌面端验证；如果还起不来，把这次对话里新出现的报错贴回来。')
+		lines.push('3. 不要再把桌面设成工作区——那是图标变白和整桌闪的根。')
+		const text = lines.join('\n')
+		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
+		mkdirp(directory)
+		const file = join(directory, 'dsh-doctor-交接-' + stampForFile() + '.md')
+		writeFileSync(file, text, 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
 async function rescueWeb() {
 	const runtime = findRuntime()
 	if (runtime === null) {
@@ -914,10 +988,19 @@ async function rescueWeb() {
 	try {
 		openBrowser(url)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }
+	const handoff = writeHandoffReport()
+	const lines = ['网页版已启动：' + url]
+	if (handoff === null) {
+		lines.push('（交接报告写入失败，可以在面板里手动导出。）')
+	} else {
+		lines.push('桌面上已生成交接报告：' + handoff)
+		lines.push('把它拖给网页版 DSH，让它按里面的问题清单接着修。')
+	}
 	return {
 		ok: true,
 		url,
-		message: '逃生成功：网页版已启动并打开浏览器 ' + url + '（隔离端口，桌面端仍然可以单独修）。',
+		handoff,
+		message: lines.join('\n'),
 	}
 }
 
@@ -942,7 +1025,14 @@ async function handle(req, res) {
 	const path = url.pathname
 	try {
 		if (path === PREFIX + '/status' && req.method === 'GET') {
-			send(res, 200, { ok: true, findings: scan(), environment: environment() })
+			const findings = scan()
+			const summary = {
+				high: findings.filter(item => item.severity === 'high').length,
+				medium: findings.filter(item => item.severity === 'medium').length,
+				fixableHigh: findings.filter(item => item.severity === 'high' && item.fixId !== null).length,
+				unfixableHigh: findings.filter(item => item.severity === 'high' && item.fixId === null).length,
+			}
+			send(res, 200, { ok: true, findings, summary, environment: environment() })
 			return
 		}
 		if (path === PREFIX + '/history' && req.method === 'GET') {

@@ -3,7 +3,7 @@
 > **DSH 桌面端把你桌面图标搞白了、整桌闪了、插件把会话炸了？点一下。**
 
 [![ci](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml)
-![platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-2b6cb0)
+![platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-2b6cb0)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![status](https://img.shields.io/badge/status-v0.4%20preview-orange)
 
@@ -125,11 +125,17 @@ powershell -File tools\build-exe.ps1     # 输出 dist\dsh-doctor.exe
 
 另外：**体检完成会弹一条结果摘要、修复/逃生完成会弹一条结果**（面板右上角，6 秒自动消失；同时发一条系统通知，Windows/macOS/Linux 各有实现）。
 
-### 网页版逃生
+### 最后一招：交接报告 + 网页版
 
-面板右上角「起网页版」：探测本机 `dsh` / `npx` 运行时 → 在 47000–48999 里挑一个空闲端口 → 起一个隔离实例 → 自动用浏览器打开。
+**网页版不是"平替"，是最后手段。** 面板里还有能一键修好的问题时，第一次点「起网页版」只会提醒你先修；再点一次才真的启动。
 
-桌面端瘫痪时，不用先修就能继续干活；修好之后再切回去。
+真正启动时，它会：
+
+1. 在**桌面**生成一份 `dsh-doctor-交接-<时间>.md` —— 里面有本次全部体检结果、已经试过的修复、以及一段可以直接发给网页版 DSH 的话；
+2. 探测本机 `dsh` / `npx`，在 47000–48999 里挑空闲端口起隔离实例；
+3. 自动用浏览器打开，并提示你把那份 MD **拖给网页版 DSH**，让它按清单接着修。
+
+> 网页版和桌面端共享同一个 `~/.dsh`，所以修的是同一份数据；交接报告是给接手的那个 agent 看的"病历"。
 
 ### 常驻守护（独立进程）
 

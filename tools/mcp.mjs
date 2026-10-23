@@ -1,4 +1,4 @@
-// dsh-doctor 的 MCP 面（可选组件）。
+﻿// dsh-doctor 的 MCP 面（可选组件）。
 //
 // 让任何支持 MCP 的 agent（DSH 自己、Claude Code、Codex……）通过受控工具调用医生：
 //   doctor_scan      只读体检
@@ -54,7 +54,7 @@ async function dispatch(method, params) {
 		return {
 			protocolVersion: '2024-11-05',
 			capabilities: { tools: {} },
-			serverInfo: { name: 'dsh-doctor', version: '0.4.0' },
+			serverInfo: { name: 'dsh-doctor', version: '0.4.1' },
 		}
 	}
 	if (method === 'ping') return {}
@@ -98,3 +98,4 @@ rl.on('line', (line) => {
 		respond({ jsonrpc: '2.0', id: request.id, error: { code: -32000, message: String(error && error.message ? error.message : error) } })
 	})
 })
+
