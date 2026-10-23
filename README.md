@@ -77,16 +77,20 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 
 装好后侧边栏出现「私人医生」：平时完全无感，只在有高危问题时亮红点；点开就是体检面板。
 
-### 急救 EXE（双端都死了也能用）
+### 发行包（三平台）
 
-下载 **[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)** 里的 `dsh-doctor.exe`（约 261 KB，自包含）：
+从 **[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)** 下载，按平台选：
 
-```text
-不需要 DSH · 不需要 Node · 不需要联网
-```
+| 平台 | 文件 | 说明 |
+|---|---|---|
+| **Windows** | `dsh-doctor.exe` | 约 264 KB，**自包含**：不需要 DSH、不需要 Node、不需要联网。双击进菜单 |
+| **Linux / 任意带 Node 的系统** | `dsh-doctor.sh` + `dsh-doctor.mjs` + `plugin/lib/index.js` | `sh dsh-doctor.sh`（需要 Node ≥18；DSH 自带一个） |
+| **macOS** | `dsh-doctor.command` + 同上 | 双击运行（首次可能需要 `chmod +x`） |
+| 任意平台 | `dsh-doctor.mjs` | `node dsh-doctor.mjs scan` / `fix <id>` / `history` / `rescue` |
 
-双击进菜单：体检 / 修桌面图标 / 移除危险工作区 / 隔离宿主包副本 / 恢复 patch 层 /
-**从备份回滚** / **起网页版逃生**。也支持 `dsh-doctor.exe scan`。
+菜单项（三平台一致）：体检 / 修桌面图标 / 移除危险工作区 / 隔离宿主包副本 / 恢复 patch 层 / **从备份回滚** / **起网页版逃生**。
+
+> macOS / Linux 上推荐直接用**插件面板**（能力最全）；命令行版适合没有界面、或 DSH 起不来的情况。
 
 ### 命令行
 

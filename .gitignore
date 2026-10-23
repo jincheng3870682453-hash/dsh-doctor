@@ -8,3 +8,7 @@ dsh-doctor-report-*/
 .idea/
 Thumbs.db
 desktop.ini
+
+# build artifacts (distributed through GitHub Releases)
+dist/release/
+

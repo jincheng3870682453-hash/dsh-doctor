@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 — 2026-10-23
+
+- **三平台发行包**：不再只有 Windows 的 EXE。
+  - Windows：`dsh-doctor.exe`（自包含，内嵌 PowerShell 逻辑）；
+  - Linux / 任意带 Node 的平台：`dsh-doctor.sh` + `dsh-doctor.mjs`（与插件共用同一份核心逻辑）；
+  - macOS：`dsh-doctor.command`（双击可跑）+ 同一份 CLI；
+  - 通用：`node dsh-doctor.mjs scan|fix|history|rescue`。
+- 构建脚本 `tools/build.ps1` 一次产出全部产物到 `dist/release/`。
+- 面板美化：Hero（Logo + 口号）、状态胶囊、按严重度着色的卡片、加载/空状态。
+- 新增 `assets/logo.svg`，README 按项目统一风格重写。
+
 ## v0.4.4 — 2026-10-23
 
 - **通知归因修正**：系统通知改由**渲染层（DSH 自己）**发出，Windows 上显示的是 DeepSeek Harness，不再出现"Windows PowerShell"；host 侧 PowerShell 弹窗默认关闭（可用 `DSH_DOCTOR_NOTIFY=host` 打开）。
