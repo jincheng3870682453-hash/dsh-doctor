@@ -8,7 +8,7 @@
 //   node dsh-doctor.mjs fix workspace-entry --yes
 //   node dsh-doctor.mjs history
 //   node dsh-doctor.mjs rescue
-import { scan, applyFixById, readHistory, rescueWeb } from '../plugin/lib/index.js'
+import { scan, applyFixById, readHistory, rescueWeb, buildAiReport } from '../plugin/lib/index.js'
 
 const FIXES = [
 	['desktop-label', '修桌面图标变白（Windows 专用）'],
@@ -121,6 +121,7 @@ async function main() {
 	if (command === 'fix') { return runFix(args[1]) }
 	if (command === 'history') { await showHistory(); return 0 }
 	if (command === 'rescue') { line(String((await rescueWeb()).message || '')); return 0 }
+	if (command === 'report') { line(buildAiReport()); return 0 }
 	if (command === 'version' || command === '--version' || command === '-v') { line('0.5.0'); return 0 }
 	line('未知命令：' + command)
 	line('可用：scan | fix <id> | history | rescue | version | （无参数进菜单）')

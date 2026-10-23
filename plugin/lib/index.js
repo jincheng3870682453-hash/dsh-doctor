@@ -1293,6 +1293,83 @@ async function rescueWeb() {
 	}
 }
 
+/* ── 给 AI 的求助报告 ───────────────────────────────────────────────── */
+
+function buildAiReport() {
+	const findings = scan()
+	const env = environment()
+	const history = readHistory(10)
+	const lines = []
+	lines.push('# DSH 桌面端 · 问题求助报告')
+	lines.push('')
+	lines.push('> 由「DSH 私人医生」生成 · ' + new Date().toLocaleString() + ' · 平台 ' + env.platform)
+	lines.push('')
+	lines.push('## 给 AI 的约束（请先读，再回答）')
+	lines.push('')
+	lines.push('1. 下面是**本机真实体检结果**，请基于证据判断，不要凭印象或通用经验。')
+	lines.push('2. 每条建议都要写清：**要执行的命令 / 预期输出 / 失败时怎么回滚**。')
+	lines.push('3. 不要建议"删图标缓存 / 重建图标 / 重启电脑"这类偏方——图标变白的真因是桌面目录被打上低完整性标签（Low integrity）。')
+	lines.push('4. 涉及**改权限、删文件、改注册表**之前，先说影响面，等我确认再动手。')
+	lines.push('5. 不确定就写"不确定，需要先查 X"，不要编造。')
+	lines.push('')
+	lines.push('## 现状')
+	lines.push('')
+	lines.push('- 症状：（把你能看到的现象补在这里，比如"桌面图标全白 / 打开会话就报错"）')
+	lines.push('- 最近做过：（装过什么插件、改过什么配置、是不是刚更新过）')
+	lines.push('')
+	lines.push('## 体检结果（' + findings.length + ' 条）')
+	lines.push('')
+	if (findings.length === 0) {
+		lines.push('_医生没有发现已知问题——可能是新问题，或不在当前检查目录里。_')
+	} else {
+		for (const item of findings) {
+			lines.push('### [' + item.severity + '] ' + item.title)
+			lines.push('')
+			if (item.path) lines.push('- 路径：`' + item.path + '`')
+			if (item.detail) lines.push('- 说明：' + item.detail)
+			lines.push('- 可一键修：' + (item.fixId ? '是（' + item.fixId + '）' : '否，需要人工判断'))
+			lines.push('')
+		}
+	}
+	lines.push('## 已经试过的修复')
+	lines.push('')
+	if (history.length === 0) {
+		lines.push('_还没有执行过修复。_')
+	} else {
+		for (const entry of history) {
+			lines.push('- ' + entry.at + '　' + entry.id + '　' + (entry.ok === true ? '成功' : '失败')
+				+ (entry.backup ? '　备份：`' + entry.backup + '`' : ''))
+			if (entry.message) lines.push('  - ' + entry.message)
+		}
+	}
+	lines.push('')
+	lines.push('## 环境')
+	lines.push('')
+	lines.push('- DSH 目录：`' + env.dshHome + '`')
+	lines.push('- 桌面：`' + env.desktop + '`')
+	lines.push('- profile：' + (Array.isArray(env.profiles) ? env.profiles.join('、') : ''))
+	lines.push('- 检查包：' + (Array.isArray(env.packs) && env.packs.length > 0 ? env.packs.join('、') : '无'))
+	lines.push('- Node：' + env.node + (env.electron ? ' · Electron ' + env.electron : ''))
+	lines.push('')
+	lines.push('## 我想问')
+	lines.push('')
+	lines.push('（在这里写你的问题，例如"下一步应该先修哪个？"）')
+	return lines.join('\n')
+}
+
+function writeAiReport() {
+	try {
+		const markdown = buildAiReport()
+		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
+		mkdirp(directory)
+		const file = join(directory, 'dsh-doctor-求助报告-' + stampForFile() + '.md')
+		writeFileSync(file, markdown, 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
 /* ── HTTP 路由 ──────────────────────────────────────────────────────── */
 
 function send(res, status, payload) {
@@ -1322,6 +1399,17 @@ async function handle(req, res) {
 				unfixableHigh: findings.filter(item => item.severity === 'high' && item.fixId === null).length,
 			}
 			send(res, 200, { ok: true, findings, summary, environment: environment() })
+			return
+		}
+		if (path === PREFIX + '/report' && req.method === 'GET') {
+			send(res, 200, { ok: true, markdown: buildAiReport() })
+			return
+		}
+		if (path === PREFIX + '/report/save' && req.method === 'POST') {
+			const file = writeAiReport()
+			send(res, 200, file === null
+				? { ok: false, message: '报告写入失败，可以直接用「复制」把内容发给 AI。' }
+				: { ok: true, path: file, message: '报告已保存到：' + file })
 			return
 		}
 		if (path === PREFIX + '/notify' && req.method === 'POST') {
@@ -1390,7 +1478,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]

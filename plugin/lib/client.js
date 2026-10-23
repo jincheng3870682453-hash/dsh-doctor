@@ -63,6 +63,10 @@ window.__ModuleLoader__.load({
 .dshdr-path{font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:17px;
   color:var(--dsw-alias-label-tertiary);word-break:break-all;
   background:var(--dsw-alias-interactive-bg-hover);border-radius:8px;padding:6px 9px}
+.dshdr-pre{margin:0;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:17px;
+  background:var(--dsw-alias-interactive-bg-hover);border-radius:10px;padding:10px 12px;
+  color:var(--dsw-alias-label-secondary)}
 .dshdr-fixrow{display:flex;justify-content:flex-end;margin-top:2px}
 .dshdr-ok{color:var(--dsw-alias-state-success-primary,#15803d);font-weight:650;font-size:14px}
 .dshdr-empty{padding:44px 24px;text-align:center;color:var(--dsw-alias-label-tertiary);
@@ -126,6 +130,22 @@ window.__ModuleLoader__.load({
 
 		async function startRescue() {
 			const response = await fetch('/dsh-doctor/rescue', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: '{}',
+			})
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
+		async function fetchReport() {
+			const response = await fetch('/dsh-doctor/report', { headers: { accept: 'application/json' } })
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
+		async function saveReportFile() {
+			const response = await fetch('/dsh-doctor/report/save', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: '{}',
@@ -238,6 +258,8 @@ window.__ModuleLoader__.load({
 			const [pending, setPending] = React.useState(null)
 			const [toast, setToast] = React.useState(null)
 			const [rescueArmed, setRescueArmed] = React.useState(false)
+			const [report, setReport] = React.useState(null)
+			const [reportBusy, setReportBusy] = React.useState(false)
 
 			// 每条消息 6 秒后自己消失（"完成后弹个消息"）。
 			React.useEffect(() => {
@@ -272,6 +294,37 @@ window.__ModuleLoader__.load({
 			}, [])
 
 			React.useEffect(() => { refresh() }, [refresh])
+
+			const onReport = () => {
+				setReportBusy(true)
+				fetchReport().then((data) => {
+					setReport({ markdown: String(data.markdown || '') })
+					setToast({ ok: true, text: '报告已生成：点「复制」直接发给 DSH，或「保存到桌面」留档；不保存也行。' })
+				}, (reason) => {
+					setToast({ ok: false, text: '生成报告失败：' + String(reason && reason.message ? reason.message : reason) })
+				}).then(() => { setReportBusy(false) })
+			}
+
+			const onCopyReport = () => {
+				const text = report !== null ? String(report.markdown) : ''
+				try {
+					navigator.clipboard.writeText(text).then(() => {
+						setToast({ ok: true, text: '报告已复制到剪贴板，直接粘贴给 DSH 就行。' })
+					}, () => {
+						setToast({ ok: false, text: '复制失败：请手动选中报告文本复制。' })
+					})
+				} catch (error) {
+					setToast({ ok: false, text: '复制失败：' + String(error && error.message ? error.message : error) })
+				}
+			}
+
+			const onSaveReport = () => {
+				saveReportFile().then((data) => {
+					setToast({ ok: data !== null && data.ok === true, text: String(data !== null && data.message ? data.message : '完成') })
+				}, (reason) => {
+					setToast({ ok: false, text: '保存失败：' + String(reason && reason.message ? reason.message : reason) })
+				})
+			}
 
 			const onTestNotify = () => {
 				try {
@@ -402,6 +455,7 @@ window.__ModuleLoader__.load({
 						h('div', { className: 'dshdr-slogan' }, '点一下修复。'),
 					),
 					h('div', { className: 'dshdr-actions' },
+						h('button', { type: 'button', className: 'dshdr-btn', onClick: onReport, disabled: reportBusy }, reportBusy ? '生成中…' : '生成报告'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onTestNotify }, '测试通知'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onRescue, disabled: rescuing }, rescuing ? '启动中…' : '起网页版'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
@@ -412,6 +466,22 @@ window.__ModuleLoader__.load({
 
 				toast !== null
 					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
+					: null,
+
+				report !== null
+					? h('div', { className: 'dshdr-card' },
+						h('div', { className: 'dshdr-card-head' },
+							h('span', { className: 'dshdr-chip dshdr-low' }, '给 AI'),
+							h('span', { className: 'dshdr-name' }, '求助报告'),
+							h('div', { className: 'dshdr-actions' },
+								h('button', { type: 'button', className: 'dshdr-btn', onClick: onCopyReport }, '复制'),
+								h('button', { type: 'button', className: 'dshdr-btn', onClick: onSaveReport }, '保存到桌面'),
+								h('button', { type: 'button', className: 'dshdr-btn', onClick: () => setReport(null) }, '收起'),
+							),
+						),
+						h('div', { className: 'dshdr-detail' }, '里面带提示词约束，直接发给任何 AI 都行；不想留档就不用保存。'),
+						h('pre', { className: 'dshdr-pre' }, String(report.markdown)),
+					)
 					: null,
 
 				findings.length === 0 && status !== null
