@@ -181,6 +181,7 @@ function Get-DoctorProfilePluginManifests {
         }
 
         foreach ($candidate in $candidates) {
+            if ($candidate -match '(?i)(\.stale|\.ignored)') { continue }
             $packagePath = Join-Path $candidate 'package.json'
             if (-not (Test-Path -LiteralPath $packagePath)) { continue }
             $package = $null

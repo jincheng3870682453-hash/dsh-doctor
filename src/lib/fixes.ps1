@@ -114,30 +114,66 @@ function Remove-DoctorWorkspaceEntries {
     }
 
     $raw = Get-Content -LiteralPath $file -Raw -Encoding UTF8
+    $data = $null
+    try { $data = $raw | ConvertFrom-Json } catch { throw 'workspace.json is not valid JSON - nothing changed.' }
+    if ($null -eq $data -or $null -eq $data.tables -or $null -eq $data.tables.workspaces) {
+        throw 'workspace.json structure is unknown - nothing changed.'
+    }
+
     $backup = $file + '.bak-' + (Get-DoctorStamp)
     Copy-Item -LiteralPath $file -Destination $backup -Force
 
-    $updated = $raw
-    foreach ($path in $Paths) {
-        $jsonEscaped = $path.Replace('\', '\\')
-        $updated = [regex]::Replace($updated, '"' + [regex]::Escape($jsonEscaped) + '"', '')
+    # 结构级删除：删记录 + 删 global.workspaceIds 里的引用，不再按字符串抠。
+    $targets = @{}
+    foreach ($path in $Paths) { $targets[$path.ToLowerInvariant()] = $true }
+    $removed = New-Object System.Collections.ArrayList
+    $records = $data.tables.workspaces
+    foreach ($property in @($records.PSObject.Properties)) {
+        $recordPath = [string]$property.Value.path
+        if ([string]::IsNullOrWhiteSpace($recordPath)) { continue }
+        if (-not $targets.ContainsKey($recordPath.ToLowerInvariant())) { continue }
+        [void]$removed.Add([string]$property.Name)
+        $records.PSObject.Properties.Remove($property.Name)
     }
-    $updated = [regex]::Replace($updated, ',\s*([\]}])', '$1')
-    $updated = [regex]::Replace($updated, '([\[{])\s*,', '$1')
-    $updated = [regex]::Replace($updated, ',\s*,', ',')
+    if ($removed.Count -eq 0) { Write-DoctorInfo 'No matching workspace entries found.'; return }
 
-    $valid = $true
-    try { $null = $updated | ConvertFrom-Json } catch { $valid = $false }
+    if ($null -ne $data.global -and $null -ne $data.global.workspaceIds) {
+        $kept = @($data.global.workspaceIds | Where-Object { $removed -notcontains [string]$_ })
+        $data.global.workspaceIds = $kept
+    }
 
-    if (-not $valid) {
-        Write-DoctorError 'Result is not valid JSON - restoring the backup.'
+    $updated = $data | ConvertTo-Json -Depth 20
+    try { $null = $updated | ConvertFrom-Json } catch {
+        Write-DoctorError 'Validation failed - restoring the backup.'
         Copy-Item -LiteralPath $backup -Destination $file -Force
         throw 'Workspace registry edit aborted (JSON validation failed).'
     }
 
-    Set-Content -LiteralPath $file -Value $updated -Encoding UTF8 -NoNewline
-    Write-DoctorInfo ('Updated ' + $file)
+    Set-Content -LiteralPath $file -Value $updated -Encoding UTF8
+    Write-DoctorInfo ('Removed ' + $removed.Count + ' workspace record(s). Restart the desktop app.')
     Write-DoctorInfo ('Rollback: Copy-Item "' + $backup + '" "' + $file + '" -Force')
+}
+
+function Repair-DoctorPatchLayer {
+    $profilesRoot = Join-Path (Get-DshHome) 'profiles'
+    if (-not (Test-Path -LiteralPath $profilesRoot)) { throw ('Profiles directory not found: ' + $profilesRoot) }
+    $restored = New-Object System.Collections.ArrayList
+    foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
+        if ($profile.Name -like '*.stale*') { continue }
+        $backups = @(Get-ChildItem -LiteralPath $profile.FullName -Filter 'cordis.patch.yml.bak*' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+        if ($backups.Count -eq 0) { continue }
+        $patchFile = Join-Path $profile.FullName 'cordis.patch.yml'
+        $size = -1
+        if (Test-Path -LiteralPath $patchFile) { $size = (Get-Item -LiteralPath $patchFile).Length }
+        if ($size -gt 2) { continue }
+        if (Test-Path -LiteralPath $patchFile) {
+            Copy-Item -LiteralPath $patchFile -Destination ($patchFile + '.empty-' + (Get-DoctorStamp)) -Force
+        }
+        Copy-Item -LiteralPath $backups[0].FullName -Destination $patchFile -Force
+        [void]$restored.Add($profile.Name)
+    }
+    if ($restored.Count -eq 0) { Write-DoctorInfo 'No patch layer needs restoring.'; return }
+    Write-DoctorInfo ('Restored cordis.patch.yml for: ' + ($restored -join ', ') + '. Restart the desktop app.')
 }
 
 function Invoke-DoctorFix {
@@ -163,8 +199,11 @@ function Invoke-DoctorFix {
             }
             Remove-DoctorWorkspaceEntries -Paths $targets -Yes:$Yes
         }
+        'restore-patch-layer' {
+            Repair-DoctorPatchLayer
+        }
         default {
-            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, profile-host-dup, workspace-entry.')
+            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, profile-host-dup, workspace-entry, restore-patch-layer.')
         }
     }
 }

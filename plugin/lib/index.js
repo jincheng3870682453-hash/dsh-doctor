@@ -795,7 +795,13 @@ async function rescueWeb() {
 	if (port === 0) return { ok: false, message: '在 47000–48999 里找不到空闲端口。' }
 	const url = 'http://127.0.0.1:' + port + '/'
 	try {
-		const child = spawn(runtime.command, runtime.args.concat(['web', '--port', String(port)]), {
+		// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
+		const isBatch = /\.(cmd|bat)$/i.test(runtime.command)
+		const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : runtime.command
+		const args = isBatch
+			? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port)])
+			: runtime.args.concat(['web', '--port', String(port)])
+		const child = spawn(command, args, {
 			cwd: homedir(), windowsHide: true, stdio: 'ignore', detached: true,
 		})
 		child.unref()

@@ -62,6 +62,22 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 
 要求：Windows 10/11 + PowerShell 5.1（系统自带），无第三方依赖。
 
+### 急救 EXE（双端都死了也能用）
+
+仓库里带了预编译好的 **[dist/dsh-doctor.exe](dist/dsh-doctor.exe)**（约 260 KB，自包含）：
+
+- **不需要 DSH、不需要 Node、不需要联网**——它把整套 PowerShell 逻辑内嵌在 .NET 启动器里；
+- 双击打开急救菜单：体检 / 修桌面图标 / 移除危险工作区 / 隔离宿主包副本 / 恢复 patch 层 / **从备份回滚** / **起网页版逃生**；
+- 也支持无交互：`dsh-doctor.exe scan`。
+
+自己构建（只需 Windows 自带的 .NET 编译器）：
+
+```powershell
+powershell -File tools\build-exe.ps1     # 输出 dist\dsh-doctor.exe
+```
+
+场景：桌面端起不来、网页版也起不来、agent 都用不了——双击它，选「从备份回滚」或「起网页版」。
+
 ---
 
 ## 能修什么
