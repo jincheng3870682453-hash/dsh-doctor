@@ -84,9 +84,9 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 | 平台 | 文件 | 说明 |
 |---|---|---|
 | **Windows** | `dsh-doctor.exe` | 约 264 KB，**自包含**：不需要 DSH、不需要 Node、不需要联网。双击进菜单 |
-| **Linux / 任意带 Node 的系统** | `dsh-doctor.sh` + `dsh-doctor.mjs` + `plugin/lib/index.js` | `sh dsh-doctor.sh`（需要 Node ≥18；DSH 自带一个） |
-| **macOS** | `dsh-doctor.command` + 同上 | 双击运行（首次可能需要 `chmod +x`） |
-| 任意平台 | `dsh-doctor.mjs` | `node dsh-doctor.mjs scan` / `fix <id>` / `history` / `rescue` |
+| **Linux** | `dsh-doctor-unix.tar.gz` | `tar xzf dsh-doctor-unix.tar.gz && sh dsh-doctor.sh`（需要 Node ≥18） |
+| **macOS** | `dsh-doctor-unix.tar.gz` | 解压后双击 `dsh-doctor.command`（首次 `chmod +x`；需要 Node ≥18） |
+| 任意平台 | 包里的 `dsh-doctor.mjs` | `node dsh-doctor.mjs scan` / `fix <id>` / `history` / `rescue` |
 
 菜单项（三平台一致）：体检 / 修桌面图标 / 移除危险工作区 / 隔离宿主包副本 / 恢复 patch 层 / **从备份回滚** / **起网页版逃生**。
 
