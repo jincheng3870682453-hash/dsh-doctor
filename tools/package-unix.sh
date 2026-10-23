@@ -9,8 +9,8 @@ trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$out" "$stage/plugin/lib"
 
-sed "s#'../plugin/lib/index.js'#'./plugin/lib/index.js'#" "$root/tools/cli.mjs" > "$stage/dsh-doctor.mjs"
-cp "$root/plugin/lib/index.js" "$stage/plugin/lib/index.js"
+sed "s#'../plugin/lib/index.js'#'./plugin/lib/index.mjs'#" "$root/tools/cli.mjs" > "$stage/dsh-doctor.mjs"
+cp "$root/plugin/lib/index.js" "$stage/plugin/lib/index.mjs"
 cp "$root/tools/launcher/dsh-doctor.sh" "$stage/dsh-doctor.sh"
 cp "$root/tools/launcher/dsh-doctor.command" "$stage/dsh-doctor.command"
 

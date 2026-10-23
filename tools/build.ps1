@@ -95,13 +95,13 @@ Write-Host ('built ' + $exeFile + ' (' + [math]::Round((Get-Item $exeFile).Lengt
 
 # ── 2) 跨平台 Node CLI（Linux / macOS / 任何有 Node 的地方）────────────────────
 $cliSource = [IO.File]::ReadAllText((Join-Path $root 'tools\cli.mjs'), [Text.Encoding]::UTF8)
-$cliRelease = $cliSource.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.js'")
+$cliRelease = $cliSource.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.mjs'")
 [IO.File]::WriteAllText((Join-Path $release 'dsh-doctor.mjs'), $cliRelease, $utf8NoBom)
 $pluginDir = Join-Path $release 'plugin\lib'
 New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
-[IO.File]::WriteAllText((Join-Path $pluginDir 'index.js'),
+[IO.File]::WriteAllText((Join-Path $pluginDir 'index.mjs'),
     [IO.File]::ReadAllText((Join-Path $root 'plugin\lib\index.js'), [Text.Encoding]::UTF8), $utf8NoBom)
-Write-Host 'built dsh-doctor.mjs + plugin/lib/index.js'
+Write-Host 'built dsh-doctor.mjs + plugin/lib/index.mjs'
 
 # ── 3) Linux / macOS 外壳（LF 换行，源码在 tools/launcher/）──────────────────
 foreach ($launcherFile in @('dsh-doctor.sh', 'dsh-doctor.command')) {
@@ -117,7 +117,7 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'plugin\lib') -Force | Out-
 Copy-Item (Join-Path $release 'dsh-doctor.mjs') $stage -Force
 Copy-Item (Join-Path $release 'dsh-doctor.sh') $stage -Force
 Copy-Item (Join-Path $release 'dsh-doctor.command') $stage -Force
-Copy-Item (Join-Path $pluginDir 'index.js') (Join-Path $stage 'plugin\lib\index.js') -Force
+Copy-Item (Join-Path $pluginDir 'index.mjs') (Join-Path $stage 'plugin\lib\index.mjs') -Force
 & tar -czf (Join-Path $release 'dsh-doctor-unix.tar.gz') -C $stage '.'
 if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Remove-Item -LiteralPath $stage -Recurse -Force

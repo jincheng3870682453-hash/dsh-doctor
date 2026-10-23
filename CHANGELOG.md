@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2 — 2026-10-24
+
+- **修 CI 抓到的打包 bug**：发行包里核心文件原来是 `plugin/lib/index.js`，脱离 `plugin/package.json` 的 `"type": "module"` 后会被 Node 当成 CommonJS，ESM 命名导入直接报错。现统一发布为 `index.mjs`，与环境无关。
+- 环境包同步修正；CI 现在会真正运行环境包里的 `node.exe` 做冒烟。
+
 ## v0.6.1 — 2026-10-24
 
 - **回应「双击了在运行，但看不到页面」**：逃生原来只等 30 秒、且不给明确反馈。现在：

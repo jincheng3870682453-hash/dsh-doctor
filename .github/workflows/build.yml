@@ -74,10 +74,10 @@ jobs:
           $nodeExe = Get-ChildItem -Path node -Recurse -Filter node.exe | Select-Object -First 1
           Copy-Item $nodeExe.FullName "$pack/node.exe"
           $cli = [IO.File]::ReadAllText('tools/cli.mjs', [Text.Encoding]::UTF8)
-          $cli = $cli.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.js'")
+          $cli = $cli.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.mjs'")
           $utf8 = New-Object Text.UTF8Encoding($false)
           [IO.File]::WriteAllText("$pack/dsh-doctor.mjs", $cli, $utf8)
-          Copy-Item 'plugin/lib/index.js' "$pack/plugin/lib/index.js"
+          Copy-Item 'plugin/lib/index.js' "$pack/plugin/lib/index.mjs"
           $launcher = "@echo off`r`nchcp 65001 >nul`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n`"%~dp0node.exe`" `"%~dp0dsh-doctor.mjs`" %*`r`necho.`r`npause`r`n"
           [IO.File]::WriteAllText("$pack/启动.cmd", $launcher, (New-Object Text.UTF8Encoding($true)))
           $readme = "DSH 私人医生 · Windows 环境包`r`n================================`r`n`r`n这个包自带 node.exe，不需要另外安装 Node，也不需要 DSH 能启动。`r`n`r`n用法：`r`n  1. 解压到任意目录（不要放在桌面，避免图标被刷新）；`r`n  2. 双击「启动.cmd」；`r`n  3. 选 1 体检，或按菜单提示操作。`r`n`r`n命令行：`r`n  node.exe dsh-doctor.mjs scan`r`n  node.exe dsh-doctor.mjs fix workspace-entry`r`n  node.exe dsh-doctor.mjs report`r`n`r`n全部在本机运行，不上传任何数据。`r`n"
