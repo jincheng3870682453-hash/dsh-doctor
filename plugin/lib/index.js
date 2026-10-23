@@ -32,7 +32,15 @@ function dshHome() {
 }
 
 function desktopPath() {
+	if (process.platform === 'linux') {
+		const xdg = process.env.XDG_DESKTOP_DIR
+		if (typeof xdg === 'string' && xdg.length > 0) return xdg
+	}
 	return join(homedir(), 'Desktop')
+}
+
+function normalizePath(value) {
+	return String(value).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
 function powershell(command, timeout = 20000) {
@@ -50,11 +58,29 @@ function powershell(command, timeout = 20000) {
 	}
 }
 
+const isWindows = process.platform === 'win32'
+
+/** 跨平台地跑一条系统命令：Windows 用 PowerShell，其它平台用 /bin/sh。 */
+function shell(command, timeout = 20000) {
+	if (isWindows) return powershell(command, timeout)
+	try {
+		const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8', timeout })
+		return {
+			ok: result.status === 0,
+			out: typeof result.stdout === 'string' ? result.stdout.trim() : '',
+			err: typeof result.stderr === 'string' ? result.stderr.trim() : '',
+		}
+	} catch (error) {
+		return { ok: false, out: '', err: String(error && error.message ? error.message : error) }
+	}
+}
+
 function quote(value) {
 	return "'" + String(value).replace(/'/g, "''") + "'"
 }
 
 function aclSddl(path) {
+	if (!isWindows) return ''
 	const result = powershell('[Console]::Out.Write((Get-Acl -LiteralPath ' + quote(path) + ').Sddl)')
 	return result.ok ? result.out : ''
 }
@@ -113,20 +139,20 @@ function readWorkspaceRegistry() {
 }
 
 function workspaceRisk(path) {
-	const userProfile = homedir().replace(/[\\/]+$/, '').toLowerCase()
-	if (path.length === 0 || userProfile.length === 0) return null
-	const target = path.replace(/[\\/]+$/, '').toLowerCase()
+	const target = normalizePath(path)
+	const home = normalizePath(homedir())
+	if (target.length === 0 || home.length === 0) return null
 	const risky = [
-		[userProfile, '用户目录本身'],
-		[(userProfile + '\\desktop').toLowerCase(), '桌面本身'],
-		[(userProfile + '\\documents').toLowerCase(), '文档目录'],
-		[(userProfile + '\\downloads').toLowerCase(), '下载目录'],
-		[(userProfile + '\\pictures').toLowerCase(), '图片目录'],
+		[home, '用户目录本身'],
+		[normalizePath(desktopPath()), '桌面本身'],
+		[home + '/documents', '文档目录'],
+		[home + '/downloads', '下载目录'],
+		[home + '/pictures', '图片目录'],
 	]
 	for (const [candidate, label] of risky) {
 		if (target === candidate) return label
 	}
-	if (/^[a-z]:$/.test(target)) return '整个盘根'
+	if (/^[a-z]:$/.test(target) || target === '/') return '整个盘根'
 	return null
 }
 
@@ -142,6 +168,19 @@ function checkDesktopAcl() {
 	const findings = []
 	const desktop = desktopPath()
 	if (!existsSync(desktop)) return findings
+	if (!isWindows) {
+		// POSIX 上没有"低完整性标签"这回事；退化成权限位检查，只报不修。
+		try {
+			const mode = statSync(desktop).mode
+			if ((mode & 0o002) !== 0) {
+				findings.push(finding('desktop-world-writable', 'medium',
+					'桌面目录是 world-writable',
+					'任何本机账户都能改写桌面内容，属于权限过宽。建议用 chmod o-w 收紧。',
+					desktop, null))
+			}
+		} catch (error) { /* ignore */ }
+		return findings
+	}
 	const sddl = aclSddl(desktop)
 	if (sddl.length === 0) return findings
 	if (/S:\(ML;;[^;]*;;;LW/.test(sddl)) {
@@ -231,9 +270,16 @@ function checkProfileHostDuplicates() {
 	return findings
 }
 
+function crashLogDir() {
+	if (isWindows) return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), '@deepseek-ai', 'dsh-desktop', 'logs')
+	if (process.platform === 'darwin') return join(homedir(), 'Library', 'Logs', '@deepseek-ai', 'dsh-desktop')
+	const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config')
+	return join(configHome, '@deepseek-ai', 'dsh-desktop', 'logs')
+}
+
 function checkCrashLogs() {
 	const findings = []
-	const logDir = join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), '@deepseek-ai', 'dsh-desktop', 'logs')
+	const logDir = crashLogDir()
 	if (!existsSync(logDir)) return findings
 	let files = []
 	try { files = readdirSync(logDir).filter(name => name.startsWith('crash-')) } catch (error) { return findings }
@@ -364,10 +410,9 @@ function checkPatchLayer() {
 /** PATH 里指向不存在文件的 dsh 命令，是"命令莫名其妙不工作"的常见根。 */
 function checkPathVariable() {
 	const findings = []
-	if (process.platform !== 'win32') return findings
-	const where = powershell('where.exe dsh')
-	if (!where.ok || where.out.length === 0) return findings
-	const lines = where.out.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
+	const listed = shell(isWindows ? 'where.exe dsh' : 'which -a dsh 2>/dev/null || command -v dsh 2>/dev/null')
+	if (!listed.ok || listed.out.length === 0) return findings
+	const lines = listed.out.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
 	const dead = lines.filter(line => !existsSync(line))
 	if (dead.length === 0) return findings
 	findings.push(finding('path-dead-dsh', 'medium',
@@ -550,6 +595,7 @@ function scan() {
 
 function environment() {
 	return {
+		platform: process.platform,
 		dshHome: dshHome(),
 		desktop: desktopPath(),
 		profiles: readDirNames(join(dshHome(), 'profiles')),
@@ -575,6 +621,9 @@ function backupDir() {
 }
 
 function fixDesktopLabel() {
+	if (!isWindows) {
+		return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
+	}
 	const desktop = desktopPath()
 	if (!existsSync(desktop)) return { ok: false, message: '找不到桌面目录：' + desktop }
 	const before = aclSddl(desktop)
@@ -740,6 +789,53 @@ function readHistory(limit = 50) {
 	return entries.reverse()
 }
 
+/* ── 跨平台通知 / 打开浏览器 ─────────────────────────────────────────── */
+
+function psQuote(value) {
+	return "'" + String(value).replace(/'/g, "''") + "'"
+}
+
+function applescriptString(value) {
+	return '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+}
+
+function openBrowser(url) {
+	try {
+		if (isWindows) spawn('cmd.exe', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore', detached: true }).unref()
+		else if (process.platform === 'darwin') spawn('open', [url], { stdio: 'ignore', detached: true }).unref()
+		else spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref()
+	} catch (error) { /* ignore */ }
+}
+
+/** 系统级通知：Windows 气泡 / macOS 通知中心 / Linux notify-send。 */
+function notify(title, body) {
+	try {
+		if (isWindows) {
+			const script = [
+				'Add-Type -AssemblyName System.Windows.Forms',
+				'Add-Type -AssemblyName System.Drawing',
+				'$n = New-Object System.Windows.Forms.NotifyIcon',
+				'$n.Icon = [System.Drawing.SystemIcons]::Warning',
+				'$n.Visible = $true',
+				'$n.ShowBalloonTip(8000, ' + psQuote(title) + ', ' + psQuote(body) + ', [System.Windows.Forms.ToolTipIcon]::Warning);',
+				'Start-Sleep -Seconds 6',
+				'$n.Dispose()',
+			].join('; ')
+			const encoded = Buffer.from(script, 'utf16le').toString('base64')
+			spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { windowsHide: true, timeout: 20000 })
+			return true
+		}
+		if (process.platform === 'darwin') {
+			spawnSync('osascript', ['-e', 'display notification ' + applescriptString(body) + ' with title ' + applescriptString(title)], { timeout: 10000 })
+			return true
+		}
+		spawnSync('notify-send', [title, body], { timeout: 10000 })
+		return true
+	} catch (error) {
+		return false
+	}
+}
+
 /* ── 网页版逃生 ─────────────────────────────────────────────────────── */
 
 function findRuntime() {
@@ -748,12 +844,12 @@ function findRuntime() {
 		const preferred = lines.find(line => /\.(cmd|exe|bat)$/i.test(line))
 		return preferred !== undefined ? preferred : lines[0]
 	}
-	const where = powershell('where.exe dsh')
-	if (where.ok && where.out.length > 0) {
-		const first = pick(where.out)
+	const dsh = shell(isWindows ? 'where.exe dsh' : 'which -a dsh 2>/dev/null || command -v dsh 2>/dev/null')
+	if (dsh.ok && dsh.out.length > 0) {
+		const first = pick(dsh.out)
 		if (first && existsSync(first)) return { command: first, args: [], label: first }
 	}
-	const npx = powershell('where.exe npx')
+	const npx = shell(isWindows ? 'where.exe npx' : 'which -a npx 2>/dev/null || command -v npx 2>/dev/null')
 	if (npx.ok && npx.out.length > 0) {
 		const first = pick(npx.out)
 		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@latest'], label: 'npx @deepseek-ai/dsh@latest' }
@@ -795,16 +891,19 @@ async function rescueWeb() {
 	if (port === 0) return { ok: false, message: '在 47000–48999 里找不到空闲端口。' }
 	const url = 'http://127.0.0.1:' + port + '/'
 	try {
-		// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
-		const isBatch = /\.(cmd|bat)$/i.test(runtime.command)
-		const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : runtime.command
-		const args = isBatch
-			? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port)])
-			: runtime.args.concat(['web', '--port', String(port)])
-		const child = spawn(command, args, {
-			cwd: homedir(), windowsHide: true, stdio: 'ignore', detached: true,
-		})
-		child.unref()
+		if (isWindows) {
+			// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
+			const isBatch = /\.(cmd|bat)$/i.test(runtime.command)
+			const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : runtime.command
+			const args = isBatch
+				? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port)])
+				: runtime.args.concat(['web', '--port', String(port)])
+			spawn(command, args, { cwd: homedir(), windowsHide: true, stdio: 'ignore', detached: true }).unref()
+		} else {
+			spawn(runtime.command, runtime.args.concat(['web', '--port', String(port)]), {
+				cwd: homedir(), stdio: 'ignore', detached: true,
+			}).unref()
+		}
 	} catch (error) {
 		return { ok: false, message: '启动失败：' + String(error && error.message ? error.message : error) }
 	}
@@ -813,7 +912,7 @@ async function rescueWeb() {
 		return { ok: false, message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 30 秒内没起来。可能是首次 npx 下载慢，稍等或用命令行确认。' }
 	}
 	try {
-		spawn('cmd.exe', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore', detached: true }).unref()
+		openBrowser(url)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }
 	return {
 		ok: true,
@@ -856,6 +955,7 @@ async function handle(req, res) {
 				result = { ok: false, message: String(error && error.message ? error.message : error) }
 			}
 			appendHistory({ at: new Date().toISOString(), id: 'rescue-web', ok: result.ok === true, message: result.message, backup: null })
+			notify(result.ok === true ? '网页版已启动 · DSH 私人医生' : '逃生失败 · DSH 私人医生', String(result.message || ''))
 			send(res, 200, result)
 			return
 		}
@@ -880,6 +980,9 @@ async function handle(req, res) {
 				message: result !== null && typeof result.message === 'string' ? result.message : '',
 				backup: result !== null && typeof result.backup === 'string' ? result.backup : null,
 			})
+			if (result !== null && typeof result.message === 'string' && result.unchanged !== true) {
+				notify(result.ok === true ? '修复完成 · DSH 私人医生' : '修复失败 · DSH 私人医生', result.message)
+			}
 			send(res, 200, result)
 			return
 		}

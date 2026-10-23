@@ -54,7 +54,7 @@ async function dispatch(method, params) {
 		return {
 			protocolVersion: '2024-11-05',
 			capabilities: { tools: {} },
-			serverInfo: { name: 'dsh-doctor', version: '0.3.0' },
+			serverInfo: { name: 'dsh-doctor', version: '0.4.0' },
 		}
 	}
 	if (method === 'ping') return {}

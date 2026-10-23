@@ -51,6 +51,13 @@ window.__ModuleLoader__.load({
 .dshdr-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;
   border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}
 .dshdr-err{color:var(--dsw-alias-state-error-primary);font-size:12px}
+.dshdr-toast{position:fixed;top:16px;right:16px;z-index:1200;max-width:min(420px,calc(100vw - 32px));
+  padding:10px 14px;border-radius:10px;background:var(--dsw-alias-bg-overlay,#fff);
+  border:1px solid var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent,0 10px 30px rgba(0,0,0,.18));
+  color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;
+  animation:dshdr-toast-in 180ms ease-out}
+.dshdr-toast-bad{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
+@keyframes dshdr-toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 `
 
 		let styleElement = null
@@ -182,12 +189,29 @@ window.__ModuleLoader__.load({
 			const [error, setError] = React.useState(null)
 			const [message, setMessage] = React.useState(null)
 			const [pending, setPending] = React.useState(null)
+			const [toast, setToast] = React.useState(null)
+
+			// 每条消息 6 秒后自己消失（"完成后弹个消息"）。
+			React.useEffect(() => {
+				if (toast === null) return undefined
+				const timer = setTimeout(() => setToast(null), 6000)
+				return () => clearTimeout(timer)
+			}, [toast])
 
 			const refresh = React.useCallback(() => {
 				setLoading(true)
 				fetchStatus().then((data) => {
 					setStatus(data)
 					setError(null)
+					const list = Array.isArray(data.findings) ? data.findings : []
+					const high = list.filter(item => item.severity === 'high').length
+					const medium = list.filter(item => item.severity === 'medium').length
+					setToast({
+						ok: high === 0,
+						text: high === 0
+							? (medium === 0 ? '体检完成：一切正常' : '体检完成：无高危，' + medium + ' 条提醒')
+							: '体检完成：' + high + ' 个高危问题等你处理',
+					})
 				}, (reason) => {
 					setError(String(reason && reason.message ? reason.message : reason))
 				}).then(() => { setLoading(false) })
@@ -202,9 +226,14 @@ window.__ModuleLoader__.load({
 				setRescuing(true)
 				setMessage(null)
 				startRescue().then((result) => {
-					setMessage({ ok: result !== null && result.ok === true, text: String(result !== null && result.message ? result.message : '完成') })
+					const ok = result !== null && result.ok === true
+					const text = String(result !== null && result.message ? result.message : '完成')
+					setMessage({ ok, text })
+					setToast({ ok, text })
 				}, (reason) => {
-					setMessage({ ok: false, text: '逃生请求失败：' + String(reason && reason.message ? reason.message : reason) })
+					const text = '逃生请求失败：' + String(reason && reason.message ? reason.message : reason)
+					setMessage({ ok: false, text })
+					setToast({ ok: false, text })
 				}).then(() => {
 					setRescuing(false)
 					notifyStatusChanged()
@@ -217,9 +246,14 @@ window.__ModuleLoader__.load({
 				setPending(fixId)
 				setMessage(null)
 				applyFix(fixId).then((result) => {
-					setMessage({ ok: result !== null && result.ok === true, text: String(result !== null && result.message ? result.message : '完成') })
+					const ok = result !== null && result.ok === true
+					const text = String(result !== null && result.message ? result.message : '完成')
+					setMessage({ ok, text })
+					setToast({ ok, text })
 				}, (reason) => {
-					setMessage({ ok: false, text: '修复请求失败：' + String(reason && reason.message ? reason.message : reason) })
+					const text = '修复请求失败：' + String(reason && reason.message ? reason.message : reason)
+					setMessage({ ok: false, text })
+					setToast({ ok: false, text })
 				}).then(() => {
 					setPending(null)
 					notifyStatusChanged()
@@ -253,6 +287,10 @@ window.__ModuleLoader__.load({
 				),
 
 				message !== null && h('div', { className: 'dshdr-msg', style: message.ok ? {} : { color: 'var(--dsw-alias-state-error-primary)' } }, message.text),
+
+				toast !== null
+					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
+					: null,
 
 				findings.length === 0 && status !== null
 					? h('div', { className: 'dshdr-empty' },

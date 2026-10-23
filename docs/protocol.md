@@ -65,6 +65,8 @@
 | `credentials-version` | — | credentials 文件版本是否缺失/不符 |
 | `patch-layer-missing` | — | `cordis.patch.yml` 是否被崩溃自修复清空（有备份才算） |
 | `path-dead-dsh` | — | PATH 里有没有指向不存在文件的 `dsh` 命令 |
+
+> 平台说明：`desktop-low-label` 只在 Windows 有；macOS/Linux 上桌面检查换成 `desktop-world-writable`（POSIX 权限位）。其余原语三平台通用。
 | `acl` | `path`、`test`（`low-label` / `everyone-deny`） | 任意目录的 ACL 判定 |
 | `file-regex` | `path`、`pattern`、`maxFiles`（≤2000，默认 400） | 在目录里递归找匹配的文件 |
 | `dir-contains` | `path`、`names[]` | 目录里是否包含指定子目录名 |

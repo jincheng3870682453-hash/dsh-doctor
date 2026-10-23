@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0 — 2026-10-23
+
+- **跨平台**：检测、修复、通知、逃生全部按平台实现——Windows / macOS / Linux。Windows 专属的只剩完整性标签（改成 POSIX 权限位检查）与急救 EXE。
+- **完成即提示**：体检结束弹结果摘要，修复/逃生结束弹结果（面板右上角 6 秒自动消失 + 系统通知：Windows 气泡 / macOS 通知中心 / Linux notify-send）。
+- **通知去噪**：侧边栏红点只对 High 亮，修复后立刻消失。
+- 系统命令抽象成 `shell()`（Windows 用 PowerShell，其它平台用 `/bin/sh`），`dsh` 探测走各平台各自的 `where/which`。
+
 ## v0.3.1 — 2026-10-23
 
 - **侧边栏红点只对 High 亮**：Medium（历史崩溃日志之类）不再点亮提示点，修复完成后点立刻消失。

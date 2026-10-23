@@ -5,7 +5,7 @@
 [![ci](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-2b6cb0)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![status](https://img.shields.io/badge/status-v0.3%20preview-orange)
+![status](https://img.shields.io/badge/status-v0.4%20preview-orange)
 
 一个**证据驱动**的 DSH 桌面端健康检查与修复工具：侧边栏一个「私人医生」图标，点开就体检；每条问题都带路径、证据、一个「一键修复」。默认只读，改动前备份，改完立刻复检。
 
@@ -80,6 +80,25 @@ powershell -File tools\build-exe.ps1     # 输出 dist\dsh-doctor.exe
 
 ---
 
+## 平台支持
+
+核心逻辑与平台无关——**DSH 插件能装在哪，医生就能跑在哪**。只有少数系统原语按平台实现：
+
+| 能力 | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| 桌面 ACL / 完整性标签（图标变白的根因） | ✅ | —（改成 POSIX 权限位检查） | —（同左） |
+| 一键修桌面图标 | ✅ | 不适用 | 不适用 |
+| 危险工作区 / 宿主包副本 / 会话 / patch 层 / credentials | ✅ | ✅ | ✅ |
+| 桌面端崩溃日志 | `%APPDATA%` | `~/Library/Logs` | `~/.config` |
+| 系统通知（修复/逃生完成时） | 原生气泡 | 通知中心（`osascript`） | `notify-send` |
+| 面板内「完成后弹结果」 | ✅ | ✅ | ✅ |
+| 网页版逃生 | ✅ | ✅ | ✅ |
+
+> macOS / Linux 上不存在 Windows 沙箱那套"低完整性标签"机制，所以那里不做 ACL 修复，其余检查、通知、逃生都在。
+> 急救 EXE 是 Windows 版；macOS / Linux 用 `plugin/` 面板或 `node tools/mcp.mjs` 即可。
+
+---
+
 ## 能修什么
 
 | 检查 | 现象 | 一键修 |
@@ -103,6 +122,8 @@ powershell -File tools\build-exe.ps1     # 输出 dist\dsh-doctor.exe
 ### 修复录
 
 每次点「一键修复」都会记一笔，落在 `~/.dsh/dsh-doctor/history.jsonl`：时间、动作、结果、备份路径。面板底部直接看最近 8 条，接口 `GET /dsh-doctor/history`。修坏了知道从哪回滚。
+
+另外：**体检完成会弹一条结果摘要、修复/逃生完成会弹一条结果**（面板右上角，6 秒自动消失；同时发一条系统通知，Windows/macOS/Linux 各有实现）。
 
 ### 网页版逃生
 
