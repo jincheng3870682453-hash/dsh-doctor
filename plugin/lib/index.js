@@ -9,10 +9,11 @@
  *
  * 设计约束：单条检查/修复失败不影响其它；不碰 DSH 安装目录；写操作先备份再复检。
  */
-import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { join, dirname } from 'node:path'
+import { spawnSync, spawn } from 'node:child_process'
+import { createServer } from 'node:net'
 import * as zlib from 'node:zlib'
 
 const zstdDecompress = typeof zlib.zstdDecompressSync === 'function' ? zlib.zstdDecompressSync : null
@@ -714,6 +715,107 @@ const FIXES = {
 	'restore-patch-layer': fixRestorePatchLayer,
 }
 
+/* ── 修复录（history.jsonl）──────────────────────────────────────────── */
+
+function historyPath() {
+	return join(dshHome(), 'dsh-doctor', 'history.jsonl')
+}
+
+function appendHistory(entry) {
+	try {
+		mkdirp(dirname(historyPath()))
+		appendFileSync(historyPath(), JSON.stringify(entry) + '\n', 'utf8')
+	} catch (error) { /* 记录失败不影响修复本身 */ }
+}
+
+function readHistory(limit = 50) {
+	const file = historyPath()
+	if (!existsSync(file)) return []
+	let lines = []
+	try { lines = readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean) } catch (error) { return [] }
+	const entries = []
+	for (const line of lines.slice(-limit)) {
+		try { entries.push(JSON.parse(line)) } catch (error) { /* 跳过坏行 */ }
+	}
+	return entries.reverse()
+}
+
+/* ── 网页版逃生 ─────────────────────────────────────────────────────── */
+
+function findRuntime() {
+	const pick = (out) => {
+		const lines = out.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
+		const preferred = lines.find(line => /\.(cmd|exe|bat)$/i.test(line))
+		return preferred !== undefined ? preferred : lines[0]
+	}
+	const where = powershell('where.exe dsh')
+	if (where.ok && where.out.length > 0) {
+		const first = pick(where.out)
+		if (first && existsSync(first)) return { command: first, args: [], label: first }
+	}
+	const npx = powershell('where.exe npx')
+	if (npx.ok && npx.out.length > 0) {
+		const first = pick(npx.out)
+		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@latest'], label: 'npx @deepseek-ai/dsh@latest' }
+	}
+	return null
+}
+
+function portFree(port) {
+	return new Promise((resolve) => {
+		const server = createServer()
+		server.once('error', () => resolve(false))
+		server.once('listening', () => server.close(() => resolve(true)))
+		server.listen(port, '127.0.0.1')
+	})
+}
+
+async function waitForHttp(url, timeoutMs) {
+	const deadline = Date.now() + timeoutMs
+	while (Date.now() < deadline) {
+		try {
+			const response = await fetch(url, { signal: AbortSignal.timeout(1500) })
+			if (response.status < 500) return true
+		} catch (error) { /* 还没起来 */ }
+		await new Promise(resolve => setTimeout(resolve, 500))
+	}
+	return false
+}
+
+async function rescueWeb() {
+	const runtime = findRuntime()
+	if (runtime === null) {
+		return { ok: false, message: '没找到可用的 dsh 运行时：PATH 里既没有 dsh，也没有 npx。' }
+	}
+	let port = 0
+	for (let attempt = 0; attempt < 6; attempt += 1) {
+		const candidate = 47000 + Math.floor(Math.random() * 1900)
+		if (await portFree(candidate)) { port = candidate; break }
+	}
+	if (port === 0) return { ok: false, message: '在 47000–48999 里找不到空闲端口。' }
+	const url = 'http://127.0.0.1:' + port + '/'
+	try {
+		const child = spawn(runtime.command, runtime.args.concat(['web', '--port', String(port)]), {
+			cwd: homedir(), windowsHide: true, stdio: 'ignore', detached: true,
+		})
+		child.unref()
+	} catch (error) {
+		return { ok: false, message: '启动失败：' + String(error && error.message ? error.message : error) }
+	}
+	const ready = await waitForHttp(url, 30000)
+	if (!ready) {
+		return { ok: false, message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 30 秒内没起来。可能是首次 npx 下载慢，稍等或用命令行确认。' }
+	}
+	try {
+		spawn('cmd.exe', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore', detached: true }).unref()
+	} catch (error) { /* 浏览器打不开也不影响服务 */ }
+	return {
+		ok: true,
+		url,
+		message: '逃生成功：网页版已启动并打开浏览器 ' + url + '（隔离端口，桌面端仍然可以单独修）。',
+	}
+}
+
 /* ── HTTP 路由 ──────────────────────────────────────────────────────── */
 
 function send(res, status, payload) {
@@ -738,6 +840,19 @@ async function handle(req, res) {
 			send(res, 200, { ok: true, findings: scan(), environment: environment() })
 			return
 		}
+		if (path === PREFIX + '/history' && req.method === 'GET') {
+			send(res, 200, { ok: true, entries: readHistory(50) })
+			return
+		}
+		if (path === PREFIX + '/rescue' && req.method === 'POST') {
+			let result = null
+			try { result = await rescueWeb() } catch (error) {
+				result = { ok: false, message: String(error && error.message ? error.message : error) }
+			}
+			appendHistory({ at: new Date().toISOString(), id: 'rescue-web', ok: result.ok === true, message: result.message, backup: null })
+			send(res, 200, result)
+			return
+		}
 		if (path === PREFIX + '/fix' && req.method === 'POST') {
 			const raw = await readBody(req)
 			let id = ''
@@ -751,6 +866,14 @@ async function handle(req, res) {
 			try { result = await fix() } catch (error) {
 				result = { ok: false, message: String(error && error.message ? error.message : error) }
 			}
+			appendHistory({
+				at: new Date().toISOString(),
+				id,
+				ok: result !== null && result.ok === true,
+				changed: !(result !== null && result.unchanged === true),
+				message: result !== null && typeof result.message === 'string' ? result.message : '',
+				backup: result !== null && typeof result.backup === 'string' ? result.backup : null,
+			})
 			send(res, 200, result)
 			return
 		}
@@ -761,6 +884,18 @@ async function handle(req, res) {
 }
 
 export const inject = ['workspaceRegistry']
+
+export { scan, readHistory, rescueWeb }
+
+export function applyFixById(id) {
+	const fix = FIXES[id]
+	if (typeof fix !== 'function') return { ok: false, message: '未知的修复项：' + id }
+	try {
+		return fix()
+	} catch (error) {
+		return { ok: false, message: String(error && error.message ? error.message : error) }
+	}
+}
 
 export function apply(ctx) {
 	hostContext = ctx

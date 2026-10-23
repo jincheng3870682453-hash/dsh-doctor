@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.0 — 2026-10-23
+
+- **修复录（history）**：每次修复落 `~/.dsh/dsh-doctor/history.jsonl`（时间 / 动作 / 结果 / 备份路径），面板底部显示最近 8 条，接口 `GET /dsh-doctor/history`。
+- **网页版逃生**：面板「起网页版」按钮 → 探测 `dsh` / `npx` 运行时 → 在 47000–48999 里选空闲端口起隔离实例 → 自动打开浏览器。桌面端瘫痪时不用等修复就能继续工作。
+- **常驻守护**：`tools/watch.mjs`，独立于 DSH 的进程，连续 3 次探测失败弹 Windows 原生气泡（10 分钟冷却）。写在 DSH 里的东西救不了 DSH。
+- **MCP 面**：`tools/mcp.mjs`，stdio JSON-RPC，四个工具 `doctor_scan` / `doctor_history` / `doctor_fix`（默认 dry-run）/ `doctor_rescue`。让任何 agent 通过受控工具调用医生，没有 shell 通道。
+- **修复目录**：`docs/catalog.md` —— 检查项、修复项、备份位置、验证方式、为什么有些只报告。
+
 ## v0.2.0 — 2026-10-23
 
 - **工作区修复重做**：优先调用 DSH 自己的 `workspaceRegistry.delete()`，不再直接改写 `workspace.json`（旧实现按字符串删除会写出非法 JSON）；文件兜底改为结构级删除（记录 + `global.workspaceIds` 引用）。

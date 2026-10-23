@@ -5,7 +5,7 @@
 [![ci](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-2b6cb0)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![status](https://img.shields.io/badge/status-v0.2%20preview-orange)
+![status](https://img.shields.io/badge/status-v0.3%20preview-orange)
 
 一个**证据驱动**的 DSH 桌面端健康检查与修复工具：侧边栏一个「私人医生」图标，点开就体检；每条问题都带路径、证据、一个「一键修复」。默认只读，改动前备份，改完立刻复检。
 
@@ -78,6 +78,49 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 | PATH 里 `dsh` 指向死路径 | "命令莫名其妙不工作" | 只报告 |
 | 桌面端崩溃日志 | 定位历史事故 | 只报告 |
 
+完整清单（含备份位置与验证方式）：**[docs/catalog.md · 修复目录](docs/catalog.md)**。
+
+---
+
+## 修复录 · 网页版逃生 · 常驻守护 · MCP
+
+### 修复录
+
+每次点「一键修复」都会记一笔，落在 `~/.dsh/dsh-doctor/history.jsonl`：时间、动作、结果、备份路径。面板底部直接看最近 8 条，接口 `GET /dsh-doctor/history`。修坏了知道从哪回滚。
+
+### 网页版逃生
+
+面板右上角「起网页版」：探测本机 `dsh` / `npx` 运行时 → 在 47000–48999 里挑一个空闲端口 → 起一个隔离实例 → 自动用浏览器打开。
+
+桌面端瘫痪时，不用先修就能继续干活；修好之后再切回去。
+
+### 常驻守护（独立进程）
+
+```powershell
+node tools/watch.mjs --url http://127.0.0.1:19387
+```
+
+每 5 秒探测一次 DSH 的本地服务；连续 3 次无响应就弹 **Windows 原生气泡**（10 分钟冷却），提示你打开医生或先用网页版。
+
+为什么必须是独立进程：DSH 瘫痪时，写在它里面的任何东西——包括这个插件——都一起死，弹不出任何提示。
+
+### MCP 面（可选）
+
+```powershell
+node tools/mcp.mjs        # stdio JSON-RPC
+```
+
+暴露四个受控工具，任何支持 MCP 的 agent 都能调用：
+
+| 工具 | 说明 |
+| --- | --- |
+| `doctor_scan` | 只读体检 |
+| `doctor_history` | 只读修复录 |
+| `doctor_fix` | 修复；不传 `confirm: true` 只返回计划 |
+| `doctor_rescue` | 起网页版逃生 |
+
+没有 shell 通道，工具只接受固定的修复 id。
+
 ---
 
 ## 社区检查包协议 v1
@@ -146,9 +189,9 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 
 - [x] v0.1 检测器 + 一键修复 + 侧边栏面板
 - [x] v0.2 工作区修复走 DSH 服务、社区检查包协议 v1、崩溃自修复恢复
-- [ ] v0.3 常驻守护：DSH 瘫痪时由外部进程弹 Windows 原生通知（写在 DSH 里的东西救不了 DSH）
-- [ ] v0.4 网页版逃生：一键起隔离 profile 的 web 端，随机高位端口 + 自动开浏览器
-- [ ] v0.5 MCP 面：让任何 agent 通过工具调用体检与修复（只读默认，写操作需显式确认）
+- [x] v0.3 修复录、网页版逃生、常驻守护、MCP 面、修复目录
+- [ ] v0.4 把守护做成安装向导（开机自启 / 托盘菜单 / 一键卸载）
+- [ ] v0.5 修复动作插件化：社区可以在评审后新增原语（当前只能新增检查）
 
 设计细节见 **[docs/design.md](docs/design.md)**。
 

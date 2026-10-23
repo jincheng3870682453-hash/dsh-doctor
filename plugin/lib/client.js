@@ -88,6 +88,22 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
+		async function fetchHistory() {
+			const response = await fetch('/dsh-doctor/history', { headers: { accept: 'application/json' } })
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
+		async function startRescue() {
+			const response = await fetch('/dsh-doctor/rescue', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: '{}',
+			})
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
 		async function applyFix(id) {
 			const response = await fetch('/dsh-doctor/fix', {
 				method: 'POST',
@@ -153,7 +169,9 @@ window.__ModuleLoader__.load({
 		function Panel() {
 			ensureStyle()
 			const [status, setStatus] = React.useState(null)
+			const [history, setHistory] = React.useState([])
 			const [loading, setLoading] = React.useState(false)
+			const [rescuing, setRescuing] = React.useState(false)
 			const [error, setError] = React.useState(null)
 			const [message, setMessage] = React.useState(null)
 			const [pending, setPending] = React.useState(null)
@@ -166,9 +184,25 @@ window.__ModuleLoader__.load({
 				}, (reason) => {
 					setError(String(reason && reason.message ? reason.message : reason))
 				}).then(() => { setLoading(false) })
+				fetchHistory().then((data) => {
+					setHistory(Array.isArray(data.entries) ? data.entries : [])
+				}, () => { /* 历史读不到不影响体检 */ })
 			}, [])
 
 			React.useEffect(() => { refresh() }, [refresh])
+
+			const onRescue = () => {
+				setRescuing(true)
+				setMessage(null)
+				startRescue().then((result) => {
+					setMessage({ ok: result !== null && result.ok === true, text: String(result !== null && result.message ? result.message : '完成') })
+				}, (reason) => {
+					setMessage({ ok: false, text: '逃生请求失败：' + String(reason && reason.message ? reason.message : reason) })
+				}).then(() => {
+					setRescuing(false)
+					refresh()
+				})
+			}
 
 			const onFix = (fixId, label) => {
 				if (typeof fixId !== 'string' || fixId.length === 0) return
@@ -204,6 +238,7 @@ window.__ModuleLoader__.load({
 					h('span', { className: 'dshdr-sub' },
 						status === null ? '正在体检…' : high > 0 ? high + ' 个高危问题' : medium > 0 ? medium + ' 个提醒' : '一切正常'),
 					h('div', { className: 'dshdr-actions' },
+						h('button', { type: 'button', className: 'dshdr-btn', onClick: onRescue, disabled: rescuing }, rescuing ? '启动中…' : '起网页版'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
 					),
 				),
@@ -237,6 +272,23 @@ window.__ModuleLoader__.load({
 							)
 							: null,
 					)),
+
+				history.length > 0
+					? h('div', { className: 'dshdr-card' },
+						h('div', { className: 'dshdr-row' },
+							h('span', { className: 'dshdr-name' }, '修复录'),
+							h('span', { className: 'dshdr-sub' }, '最近 ' + history.length + ' 条'),
+						),
+						history.slice(0, 8).map((entry, index) => h('div', {
+							key: String(entry.at) + String(entry.id) + '-' + index,
+							className: 'dshdr-row',
+						},
+							h('span', { className: entry.ok === true ? 'dshdr-chip dshdr-low' : 'dshdr-chip dshdr-high' }, entry.ok === true ? '成功' : '失败'),
+							h('span', { className: 'dshdr-detail' },
+								String(entry.id) + ' · ' + new Date(entry.at).toLocaleString() + ' · ' + String(entry.message || '')),
+						)),
+					)
+					: null,
 
 				h('div', { className: 'dshdr-foot' },
 					env === null ? '只在本机运行，不上传任何数据。' :
