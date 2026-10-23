@@ -1,4 +1,4 @@
-﻿// dsh-doctor 的 MCP 面（可选组件）。
+// dsh-doctor 的 MCP 面（可选组件）。
 //
 // 让任何支持 MCP 的 agent（DSH 自己、Claude Code、Codex……）通过受控工具调用医生：
 //   doctor_scan      只读体检

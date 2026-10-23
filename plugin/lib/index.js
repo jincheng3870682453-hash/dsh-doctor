@@ -9,7 +9,7 @@
  *
  * 设计约束：单条检查/修复失败不影响其它；不碰 DSH 安装目录；写操作先备份再复检。
  */
-import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync, openSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync, spawn } from 'node:child_process'
@@ -59,6 +59,28 @@ function powershell(command, timeout = 20000) {
 }
 
 const isWindows = process.platform === 'win32'
+
+function rescueRegistryPath() {
+	return join(dshHome(), 'dsh-doctor', 'rescue.json')
+}
+
+function readRescueRegistry() {
+	try { return JSON.parse(readFileSync(rescueRegistryPath(), 'utf8')) } catch (error) { return null }
+}
+
+function writeRescueRegistry(value) {
+	try {
+		mkdirp(dirname(rescueRegistryPath()))
+		writeFileSync(rescueRegistryPath(), JSON.stringify(value, null, 2), 'utf8')
+	} catch (error) { /* ignore */ }
+}
+
+/** 同步探测端口是否还有人在听（netstat / ss），用于识别"上次逃生实例已死"。 */
+function portInUse(port) {
+	const result = shell(isWindows ? 'netstat -ano' : 'ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null')
+	if (!result.ok || result.out.length === 0) return true
+	return new RegExp('[:.]' + port + '\\s').test(result.out)
+}
 
 /** 跨平台地跑一条系统命令：Windows 用 PowerShell，其它平台用 /bin/sh。 */
 function shell(command, timeout = 20000) {
@@ -264,7 +286,7 @@ function checkProfileHostDuplicates() {
 		if (hostPackages.length === 0) continue
 		findings.push(finding('profile-host-duplicate', 'high',
 			'profile 里出现了宿主包副本：' + hostPackages.join(', '),
-			'同一个进程里两份 dsh-tools 会造出两个 Symbol（reading \'prepare\'）；旧版本副本则报 is incompatible with dsh。隔离后请完整退出并重开桌面端。',
+			'同一个进程里两份 dsh-tools 会造出两个 Symbol（reading \'prepare\'）；旧版本副本则报 is incompatible with dsh。修复只会把这几份副本单独挪走，不动同目录下的合法插件。',
 			dir, 'profile-host-dup'))
 	}
 	return findings
@@ -422,6 +444,19 @@ function checkPathVariable() {
 	return findings
 }
 
+/** 上次逃生实例如果已经死了，浏览器里的旧标签页会报 Failed to fetch —— 说明白，别让人以为坏了。 */
+function checkRescueInstance() {
+	const findings = []
+	const registry = readRescueRegistry()
+	if (registry === null || typeof registry.port !== 'number') return findings
+	if (portInUse(registry.port)) return findings
+	findings.push(finding('rescue-instance-dead', 'low',
+		'上次逃生实例已失效（端口 ' + registry.port + '）',
+		'浏览器里指向 127.0.0.1:' + registry.port + ' 的旧标签页会显示 "Failed to fetch" / 读不到插件——那不是数据坏了，是那个 host 已经退出。点一次「起网页版」会复用或重开一个。',
+		'http://127.0.0.1:' + registry.port + '/', null))
+	return findings
+}
+
 /* ── 社区检查包（协议 v1）──────────────────────────────────────────── */
 
 const PACK_DIR = () => join(dshHome(), 'dsh-doctor', 'checks')
@@ -473,6 +508,7 @@ const DETECTORS = {
 	'credentials-version': () => checkCredentials(),
 	'patch-layer-missing': () => checkPatchLayer(),
 	'path-dead-dsh': () => checkPathVariable(),
+	'rescue-instance-dead': () => checkRescueInstance(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -573,6 +609,7 @@ function scan() {
 		checkCredentials,
 		checkPatchLayer,
 		checkPathVariable,
+		checkRescueInstance,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -709,21 +746,27 @@ function fixProfileHostDup() {
 	const dirs = profileHostDirs().filter(dir => hostPackagesIn(dir).length > 0)
 	if (dirs.length === 0) return { ok: true, unchanged: true, message: '没有发现宿主包副本，不需要修。' }
 	const stamp = Date.now()
+	// 只挪走"宿主包副本"本身，绝不整目录改名——同目录里还有插件的合法依赖。
+	const quarantineRoot = join(backupDir(), 'hostpkgs-' + stamp)
 	const moved = []
 	for (const dir of dirs) {
-		try {
-			const target = dir + '.stale-' + stamp
-			renameSync(dir, target)
-			moved.push(target)
-		} catch (error) {
-			return { ok: false, message: '隔离失败：' + (error && error.message ? error.message : error) }
+		for (const name of hostPackagesIn(dir)) {
+			try {
+				mkdirp(quarantineRoot)
+				const target = join(quarantineRoot, name)
+				renameSync(join(dir, name), target)
+				moved.push(name)
+			} catch (error) {
+				return { ok: false, message: '隔离 ' + name + ' 失败：' + (error && error.message ? error.message : error) }
+			}
 		}
 	}
 	return {
 		ok: true,
 		verified: true,
-		message: '已隔离 ' + moved.length + ' 个宿主包副本。请完整退出并重新打开桌面端。',
+		message: '已隔离 ' + moved.length + ' 个宿主包副本（' + moved.join(', ') + '），其它插件不受影响。请完整退出并重新打开桌面端。',
 		moved,
+		quarantine: quarantineRoot,
 	}
 }
 
@@ -952,11 +995,43 @@ function writeHandoffReport() {
 	}
 }
 
+/** 从逃生实例的启动日志里抠出带 token 的地址；没有就退回裸地址。 */
+function tokenizedUrl(port, logFile) {
+	if (typeof logFile === 'string') {
+		try {
+			const text = readFileSync(logFile, 'utf8')
+			const matches = text.match(/https?:\/\/127\.0\.0\.1:(\d+)\/\?token=([A-Za-z0-9._~-]+)/g)
+			if (matches !== null && matches.length > 0) return matches[matches.length - 1]
+		} catch (error) { /* ignore */ }
+	}
+	return 'http://127.0.0.1:' + port + '/'
+}
+
 async function rescueWeb() {
 	const runtime = findRuntime()
 	if (runtime === null) {
 		return { ok: false, message: '没找到可用的 dsh 运行时：PATH 里既没有 dsh，也没有 npx。' }
 	}
+
+	// 1) 先复用已经在跑的逃生实例，避免每次点都新开一个、旧标签页变成"尸体"。
+	const previous = readRescueRegistry()
+	if (previous !== null && typeof previous.port === 'number' && portInUse(previous.port)) {
+		const previousBase = 'http://127.0.0.1:' + previous.port + '/'
+		if (await waitForHttp(previousBase, 5000)) {
+			const previousUrl = tokenizedUrl(previous.port, previous.log)
+			openBrowser(previousUrl)
+			const handoffFile = writeHandoffReport()
+			return {
+				ok: true,
+				reused: true,
+				url: previousBase,
+				handoff: handoffFile,
+				message: '复用已在运行的逃生实例：' + previousBase + '\n'
+					+ '（已用带 token 的地址重开浏览器；之前那些报 Failed to fetch 的旧标签页可以直接关掉。）',
+			}
+		}
+	}
+
 	let port = 0
 	for (let attempt = 0; attempt < 6; attempt += 1) {
 		const candidate = 47000 + Math.floor(Math.random() * 1900)
@@ -964,6 +1039,14 @@ async function rescueWeb() {
 	}
 	if (port === 0) return { ok: false, message: '在 47000–48999 里找不到空闲端口。' }
 	const url = 'http://127.0.0.1:' + port + '/'
+
+	// 2) 逃生实例的 stdout/stderr 落盘，起不来时才有证据可查。
+	const logFile = join(dshHome(), 'dsh-doctor', 'rescue-' + port + '.log')
+	mkdirp(dirname(logFile))
+	let logFd = -1
+	try { logFd = openSync(logFile, 'a') } catch (error) { logFd = -1 }
+	const stdio = logFd >= 0 ? ['ignore', logFd, logFd] : 'ignore'
+
 	try {
 		if (isWindows) {
 			// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
@@ -972,10 +1055,10 @@ async function rescueWeb() {
 			const args = isBatch
 				? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port)])
 				: runtime.args.concat(['web', '--port', String(port)])
-			spawn(command, args, { cwd: homedir(), windowsHide: true, stdio: 'ignore', detached: true }).unref()
+			spawn(command, args, { cwd: homedir(), windowsHide: true, stdio, detached: true }).unref()
 		} else {
 			spawn(runtime.command, runtime.args.concat(['web', '--port', String(port)]), {
-				cwd: homedir(), stdio: 'ignore', detached: true,
+				cwd: homedir(), stdio, detached: true,
 			}).unref()
 		}
 	} catch (error) {
@@ -983,23 +1066,35 @@ async function rescueWeb() {
 	}
 	const ready = await waitForHttp(url, 30000)
 	if (!ready) {
-		return { ok: false, message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 30 秒内没起来。可能是首次 npx 下载慢，稍等或用命令行确认。' }
+		return {
+			ok: false,
+			log: logFile,
+			message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 30 秒内没起来。'
+				+ '日志：' + logFile + '（首次 npx 下载慢也会这样，稍等再点一次）。',
+		}
 	}
+	writeRescueRegistry({ port, url, log: logFile, startedAt: new Date().toISOString() })
+	const authenticatedUrl = tokenizedUrl(port, logFile)
 	try {
-		openBrowser(url)
+		openBrowser(authenticatedUrl)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }
 	const handoff = writeHandoffReport()
 	const lines = ['网页版已启动：' + url]
+	lines.push(authenticatedUrl.indexOf('token=') >= 0
+		? '已用带 token 的地址打开浏览器（不带 token 的页面会报 Failed to fetch）。'
+		: '注意：启动日志里没找到 token，如果页面报 Failed to fetch，看日志：' + logFile)
 	if (handoff === null) {
 		lines.push('（交接报告写入失败，可以在面板里手动导出。）')
 	} else {
 		lines.push('桌面上已生成交接报告：' + handoff)
 		lines.push('把它拖给网页版 DSH，让它按里面的问题清单接着修。')
 	}
+	lines.push('（以后再点「起网页版」会复用这个实例，不会新开。）')
 	return {
 		ok: true,
 		url,
 		handoff,
+		log: logFile,
 		message: lines.join('\n'),
 	}
 }

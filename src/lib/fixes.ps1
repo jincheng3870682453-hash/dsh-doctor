@@ -60,35 +60,50 @@ function Repair-DoctorProfileHostDup {
         return
     }
 
-    Write-DoctorWarn ('Found ' + $targets.Count + ' duplicate host-package folder(s):')
-    foreach ($target in $targets) { Write-Host ('    ' + $target) -ForegroundColor Yellow }
+    # 只挪走宿主包副本本身，绝不整目录改名：同目录里还有插件的合法依赖。
+    $critical = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis')
+    $quarantine = Join-Path (Get-DshHome) ('dsh-doctor-backups\hostpkgs-' + (Get-DoctorStamp))
+    $candidates = New-Object System.Collections.ArrayList
+    foreach ($target in $targets) {
+        foreach ($name in $critical) {
+            $packagePath = Join-Path $target $name
+            if (Test-Path -LiteralPath $packagePath) { [void]$candidates.Add($packagePath) }
+        }
+    }
+    if ($candidates.Count -eq 0) {
+        Write-DoctorInfo 'No host-package copies found inside those folders - nothing to do.'
+        return
+    }
+
+    Write-DoctorWarn ('Found ' + $candidates.Count + ' host-package copy/copies:')
+    foreach ($candidate in $candidates) { Write-Host ('    ' + $candidate) -ForegroundColor Yellow }
 
     if (-not $Yes) {
-        $answer = Read-Host 'Quarantine them by renaming to @deepseek-ai.stale-<timestamp>? [y/N]'
+        $answer = Read-Host 'Move only these host-package copies into the doctor backup folder? [y/N]'
         if ($answer -notmatch '^(y|yes)$') {
             Write-DoctorInfo 'Cancelled - nothing changed.'
             return
         }
     }
 
-    $stamp = (Get-Date).ToString('yyyyMMddHHmmss')
-    $renamed = New-Object System.Collections.ArrayList
-    foreach ($target in $targets) {
+    New-Item -ItemType Directory -Force -Path $quarantine | Out-Null
+    $moved = New-Object System.Collections.ArrayList
+    foreach ($candidate in $candidates) {
         try {
-            $item = Get-Item -LiteralPath $target -Force
-            $newName = $item.Name + '.stale-' + $stamp
-            Rename-Item -LiteralPath $target -NewName $newName -ErrorAction Stop
-            [void]$renamed.Add($item.FullName)
-            Write-DoctorStep ('Quarantined: ' + $target + ' -> ' + $newName)
+            $name = Split-Path -Leaf $candidate
+            Move-Item -LiteralPath $candidate -Destination (Join-Path $quarantine $name) -ErrorAction Stop
+            [void]$moved.Add($name)
+            Write-DoctorStep ('Quarantined: ' + $name + ' -> ' + $quarantine)
         } catch {
-            Write-DoctorWarn ('Failed to quarantine ' + $target + ': ' + $_.Exception.Message)
+            Write-DoctorWarn ('Failed to quarantine ' + $candidate + ': ' + $_.Exception.Message)
         }
     }
 
-    if ($renamed.Count -gt 0) {
-        Write-DoctorInfo ('Quarantined ' + $renamed.Count + ' folder(s).')
-        Write-DoctorInfo 'Now fully quit and restart the DSH desktop app so the runtime reloads without the duplicate.'
-        Write-DoctorInfo 'Rollback: rename each *.stale-<timestamp> folder back by removing the suffix.'
+    if ($moved.Count -gt 0) {
+        Write-DoctorInfo ('Quarantined ' + $moved.Count + ' host-package copy/copies: ' + ($moved -join ', '))
+        Write-DoctorInfo 'Other plugins in the same folder were left untouched.'
+        Write-DoctorInfo 'Now fully quit and restart the DSH desktop app.'
+        Write-DoctorInfo ('Rollback: move them back from ' + $quarantine)
     }
 }
 

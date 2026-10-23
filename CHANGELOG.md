@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.3 — 2026-10-23
+
+- **逃生实例复用**：不再每次点都新开一个。端口登记在 `~/.dsh/dsh-doctor/rescue.json`，活着就复用并重开浏览器，死了才新起。
+- **带 token 打开浏览器**：从启动日志里抠出 `?token=...` 地址。之前开的是裸地址，页面能加载但 API 全部 `Failed to fetch`（设置页读不到插件、Agent 预设报错的真因之一）。
+- **逃生实例日志落盘**：`~/.dsh/dsh-doctor/rescue-<port>.log`，起不来时有证据。
+- **新检查 `rescue-instance-dead`**：识别"上次逃生实例已失效"，并说明旧标签页报 `Failed to fetch` 不是数据坏了。
+- **修复宿主包隔离误伤**：原来会把整个 `@deepseek-ai` 目录改名，连合法插件一起干掉；现在只挪走 `dsh-tools / dsh-skill / schemastery / dsh-util-values / cordis` 这几份副本，同目录其它插件不动（JS 与 PS 两条路径都改了）。
+- **去掉写坏的 BOM**：`package.json` 曾被我方脚本加 BOM，插件加载器报 `Unexpected token '\uFEFF'`。
+
 ## v0.4.2 — 2026-10-23
 
 - **结果提示不再悬浮**：从 `position: fixed` 改成面板内容流里的一行横幅，不会再盖住窗口右上角的三颗控件或面板按钮；多行（交接报告）停留 15 秒，单行 6 秒。
