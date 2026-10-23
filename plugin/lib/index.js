@@ -16,6 +16,10 @@ import { spawnSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import * as zlib from 'node:zlib'
 
+import { createRequire } from 'node:module'
+
+const requireFromHere = createRequire(import.meta.url)
+
 const zstdDecompress = typeof zlib.zstdDecompressSync === 'function' ? zlib.zstdDecompressSync : null
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 
@@ -633,6 +637,8 @@ function scan() {
 function environment() {
 	return {
 		platform: process.platform,
+		electron: process.versions.electron || null,
+		execPath: process.execPath,
 		dshHome: dshHome(),
 		desktop: desktopPath(),
 		profiles: readDirNames(join(dshHome(), 'profiles')),
@@ -850,7 +856,71 @@ function openBrowser(url) {
 }
 
 /** 系统级通知：Windows 气泡 / macOS 通知中心 / Linux notify-send。 */
-function notify(title, body) {
+/** Electron 的 CJS 互操作在不同版本里形态不同（default / 'module.exports'），挨个找。 */
+function pickElectronNotification(subject) {
+	const seen = new Set()
+	const queue = [subject]
+	let guard = 0
+	while (queue.length > 0 && guard < 20) {
+		guard += 1
+		const current = queue.shift()
+		if (current === null || current === undefined || typeof current !== 'object' || seen.has(current)) continue
+		seen.add(current)
+		if (typeof current.Notification === 'function') return current.Notification
+		for (const key of ['default', 'module.exports']) {
+			try {
+				if (current[key] !== undefined && current[key] !== null) queue.push(current[key])
+			} catch (error) { /* ignore */ }
+		}
+	}
+	return null
+}
+
+/** 跨平台系统通知。优先用宿主自己的 Electron 通知，让系统上显示的是 DSH 而不是 PowerShell。 */
+async function notify(title, body) {
+	const detail = []
+	if (process.versions.electron) {
+		let subject = null
+		try {
+			subject = await import('electron')
+		} catch (error) {
+			detail.push('import: ' + String(error && error.message ? error.message : error))
+		}
+		if (subject === null || subject === undefined) {
+			try {
+				subject = requireFromHere('electron')
+			} catch (error) {
+				detail.push('require: ' + String(error && error.message ? error.message : error))
+			}
+		}
+		const Notification = pickElectronNotification(subject)
+		if (typeof Notification === 'function') {
+			const supported = typeof Notification.isSupported === 'function' ? Notification.isSupported() : true
+			if (supported) {
+				try {
+					new Notification({ title: String(title), body: String(body) }).show()
+					return { via: 'electron', detail: detail.join(' | ') }
+				} catch (error) {
+					detail.push('show: ' + String(error && error.message ? error.message : error))
+				}
+			} else {
+				detail.push('Notification.isSupported() === false')
+			}
+		} else {
+			const describe = (value, depth) => {
+				if (value === null) return 'null'
+				if (value === undefined) return 'undefined'
+				if (typeof value !== 'object') return typeof value
+				if (depth > 0) return 'object'
+				let keys = []
+				try { keys = Object.keys(value).slice(0, 14) } catch (error) { keys = ['(unreadable)'] }
+				return 'object[' + keys.join(',') + ']'
+			}
+			detail.push('dump: top=' + describe(subject, 0)
+				+ ' default=' + describe(subject !== null && subject !== undefined ? subject.default : undefined, 0)
+				+ " module.exports=" + describe(subject !== null && subject !== undefined ? subject['module.exports'] : undefined, 0))
+		}
+	}
 	try {
 		if (isWindows) {
 			const script = [
@@ -865,20 +935,23 @@ function notify(title, body) {
 			].join('; ')
 			const encoded = Buffer.from(script, 'utf16le').toString('base64')
 			spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { windowsHide: true, timeout: 20000 })
-			return true
+			return { via: 'powershell', detail: detail.join(' | ') }
 		}
 		if (process.platform === 'darwin') {
 			spawnSync('osascript', ['-e', 'display notification ' + applescriptString(body) + ' with title ' + applescriptString(title)], { timeout: 10000 })
-			return true
+			return { via: 'osascript', detail: detail.join(' | ') }
 		}
 		spawnSync('notify-send', [title, body], { timeout: 10000 })
-		return true
+		return { via: 'notify-send', detail: detail.join(' | ') }
 	} catch (error) {
-		return false
+		return { via: 'none', detail: String(error && error.message ? error.message : error) }
 	}
 }
 
-/* ── 网页版逃生 ─────────────────────────────────────────────────────── */
+/** 除交互面板外，只有显式开启时才由 host 自己弹系统通知（默认关闭：PowerShell 弹窗的归因是错的）。 */
+function hostNotifyEnabled() {
+	return String(process.env.DSH_DOCTOR_NOTIFY || '').toLowerCase() === 'host'
+}
 
 function findRuntime() {
 	const pick = (out) => {
@@ -1130,6 +1203,19 @@ async function handle(req, res) {
 			send(res, 200, { ok: true, findings, summary, environment: environment() })
 			return
 		}
+		if (path === PREFIX + '/notify' && req.method === 'POST') {
+			const raw = await readBody(req)
+			let title = 'DSH 私人医生'
+			let body = '这是一条测试通知。'
+			try {
+				const parsed = JSON.parse(raw)
+				if (parsed !== null && typeof parsed.title === 'string') title = parsed.title
+				if (parsed !== null && typeof parsed.body === 'string') body = parsed.body
+			} catch (error) { /* 用默认文案 */ }
+			const outcome = await notify(title, body)
+			send(res, 200, { ok: outcome.via !== 'none', via: outcome.via, detail: outcome.detail })
+			return
+		}
 		if (path === PREFIX + '/history' && req.method === 'GET') {
 			send(res, 200, { ok: true, entries: readHistory(50) })
 			return
@@ -1140,7 +1226,9 @@ async function handle(req, res) {
 				result = { ok: false, message: String(error && error.message ? error.message : error) }
 			}
 			appendHistory({ at: new Date().toISOString(), id: 'rescue-web', ok: result.ok === true, message: result.message, backup: null })
-			notify(result.ok === true ? '网页版已启动 · DSH 私人医生' : '逃生失败 · DSH 私人医生', String(result.message || ''))
+			if (hostNotifyEnabled()) {
+				notify(result.ok === true ? '网页版已启动 · DSH 私人医生' : '逃生失败 · DSH 私人医生', String(result.message || '')).catch(() => {})
+			}
 			send(res, 200, result)
 			return
 		}
@@ -1166,7 +1254,9 @@ async function handle(req, res) {
 				backup: result !== null && typeof result.backup === 'string' ? result.backup : null,
 			})
 			if (result !== null && typeof result.message === 'string' && result.unchanged !== true) {
-				notify(result.ok === true ? '修复完成 · DSH 私人医生' : '修复失败 · DSH 私人医生', result.message)
+				if (hostNotifyEnabled()) {
+					notify(result.ok === true ? '修复完成 · DSH 私人医生' : '修复失败 · DSH 私人医生', result.message).catch(() => {})
+				}
 			}
 			send(res, 200, result)
 			return

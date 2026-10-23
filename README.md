@@ -123,7 +123,7 @@ powershell -File tools\build-exe.ps1     # 输出 dist\dsh-doctor.exe
 
 每次点「一键修复」都会记一笔，落在 `~/.dsh/dsh-doctor/history.jsonl`：时间、动作、结果、备份路径。面板底部直接看最近 8 条，接口 `GET /dsh-doctor/history`。修坏了知道从哪回滚。
 
-另外：**体检完成会弹一条结果摘要、修复/逃生完成会弹一条结果**（面板右上角，6 秒自动消失；同时发一条系统通知，Windows/macOS/Linux 各有实现）。
+另外：**体检完成会弹一条结果摘要、修复/逃生完成会弹一条结果**（面板内容区横幅，6 秒自动消失；同时由 DSH 页面本身发一条系统通知，所以系统里显示的来源是 DeepSeek Harness，不是 PowerShell）。想先确认权限，点面板右上角「测试通知」。
 
 ### 最后一招：交接报告 + 网页版
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.4 — 2026-10-23
+
+- **通知归因修正**：系统通知改由**渲染层（DSH 自己）**发出，Windows 上显示的是 DeepSeek Harness，不再出现"Windows PowerShell"；host 侧 PowerShell 弹窗默认关闭（可用 `DSH_DOCTOR_NOTIFY=host` 打开）。
+- 面板新增「测试通知」按钮，直接看当前通知权限状态。
+- 背景：host 进程里 `require('electron')` 拿到的是空壳（`default` / `module.exports` 都是 `{}`），拿不到 `Notification`，所以只能由页面发。
+
 ## v0.4.3 — 2026-10-23
 
 - **逃生实例复用**：不再每次点都新开一个。端口登记在 `~/.dsh/dsh-doctor/rescue.json`，活着就复用并重开浏览器，死了才新起。

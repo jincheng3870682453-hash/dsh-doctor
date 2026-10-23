@@ -121,6 +121,21 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
+		function systemNotify(title, body) {
+			try {
+				if (typeof Notification !== 'function') return
+				const show = () => {
+					try { new Notification(String(title), { body: String(body) }) } catch (error) { /* ignore */ }
+				}
+				if (Notification.permission === 'granted') { show(); return }
+				if (Notification.permission !== 'denied' && typeof Notification.requestPermission === 'function') {
+					Notification.requestPermission().then((permission) => {
+						if (permission === 'granted') show()
+					}, () => { /* 拒绝就只留面板横幅 */ })
+				}
+			} catch (error) { /* ignore */ }
+		}
+
 		/** 侧边栏图标：安静，只有 High（真需要人处理）才亮红点；修完立刻消失。 */
 		function SidebarIcon(props) {
 			const size = props !== null && props !== undefined && typeof props.size === 'number' ? props.size : 18
@@ -225,24 +240,40 @@ window.__ModuleLoader__.load({
 
 			React.useEffect(() => { refresh() }, [refresh])
 
+			const onTestNotify = () => {
+				try {
+					if (typeof Notification !== 'function') {
+						setToast({ ok: false, text: '当前环境不支持系统通知（页面里没有 Notification）。' })
+						return
+					}
+					const state = String(Notification.permission)
+					systemNotify('DSH 私人医生', '这是一条测试通知：它应该显示来自 DeepSeek Harness，而不是 Windows PowerShell。')
+					setToast({ ok: true, text: '已尝试发送系统通知（当前权限：' + state + '）。如果没出现，去系统「通知」设置里允许 DeepSeek Harness。' })
+				} catch (error) {
+					setToast({ ok: false, text: '测试失败：' + String(error && error.message ? error.message : error) })
+				}
+			}
+
 			const onRescue = () => {
 				// 网页版是最后一招：还有能一键修的问题时，先劝一次，再点才放行。
 				const fixable = status !== null && status.summary !== undefined ? (Number(status.summary.fixableHigh) || 0) : 0
 				if (!rescueArmed && fixable > 0) {
 					setRescueArmed(true)
 					const text = '还有 ' + fixable + ' 个可以一键修好的问题，建议先点「一键修复」。确实修不好、要现在开网页版逃生，就再点一次「起网页版」。'
-										setToast({ ok: false, text })
+					setToast({ ok: false, text })
 					return
 				}
 				setRescueArmed(false)
 				setRescuing(true)
-								startRescue().then((result) => {
+				startRescue().then((result) => {
 					const ok = result !== null && result.ok === true
 					const text = String(result !== null && result.message ? result.message : '完成')
-										setToast({ ok, text })
+					setToast({ ok, text })
+					systemNotify(ok ? '网页版已启动 · DSH 私人医生' : '逃生失败 · DSH 私人医生', text)
 				}, (reason) => {
 					const text = '逃生请求失败：' + String(reason && reason.message ? reason.message : reason)
-										setToast({ ok: false, text })
+					setToast({ ok: false, text })
+					systemNotify('逃生失败 · DSH 私人医生', text)
 				}).then(() => {
 					setRescuing(false)
 					notifyStatusChanged()
@@ -253,13 +284,15 @@ window.__ModuleLoader__.load({
 			const onFix = (fixId, label) => {
 				if (typeof fixId !== 'string' || fixId.length === 0) return
 				setPending(fixId)
-								applyFix(fixId).then((result) => {
+				applyFix(fixId).then((result) => {
 					const ok = result !== null && result.ok === true
 					const text = String(result !== null && result.message ? result.message : '完成')
-										setToast({ ok, text })
+					setToast({ ok, text })
+					systemNotify(ok ? '修复完成 · DSH 私人医生' : '修复失败 · DSH 私人医生', text)
 				}, (reason) => {
 					const text = '修复请求失败：' + String(reason && reason.message ? reason.message : reason)
-										setToast({ ok: false, text })
+					setToast({ ok: false, text })
+					systemNotify('修复失败 · DSH 私人医生', text)
 				}).then(() => {
 					setPending(null)
 					notifyStatusChanged()
@@ -287,6 +320,7 @@ window.__ModuleLoader__.load({
 					h('span', { className: 'dshdr-sub' },
 						status === null ? '正在体检…' : high > 0 ? high + ' 个高危问题' : medium > 0 ? medium + ' 个提醒' : '一切正常'),
 					h('div', { className: 'dshdr-actions' },
+						h('button', { type: 'button', className: 'dshdr-btn', onClick: onTestNotify }, '测试通知'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onRescue, disabled: rescuing }, rescuing ? '启动中…' : '起网页版'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
 					),
