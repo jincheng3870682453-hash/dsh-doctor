@@ -103,44 +103,25 @@ New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
     [IO.File]::ReadAllText((Join-Path $root 'plugin\lib\index.js'), [Text.Encoding]::UTF8), $utf8NoBom)
 Write-Host 'built dsh-doctor.mjs + plugin/lib/index.js'
 
-# ── 3) Linux / macOS 外壳（LF 换行）──────────────────────────────────────────
-$posix = @'
-#!/bin/sh
-# dsh-doctor · 点一下修复。
-DIR=$(cd "$(dirname "$0")" && pwd)
-if command -v node >/dev/null 2>&1; then
-  NODE=node
-elif [ -x "$DIR/node" ]; then
-  NODE="$DIR/node"
-else
-  printf '\n需要 Node.js（>=18）。如果 DSH 里能跑终端，也可以直接用它的 node：\n  node %s\n\n' "$DIR/dsh-doctor.mjs"
-  exit 1
-fi
-exec "$NODE" "$DIR/dsh-doctor.mjs" "$@"
-'@
-$mac = @'
-#!/bin/bash
-# dsh-doctor · 点一下修复。（macOS 双击运行）
-DIR="$(cd "$(dirname "$0")" && pwd)"
-if command -v node >/dev/null 2>&1; then
-  NODE=node
-elif [ -x "$DIR/node" ]; then
-  NODE="$DIR/node"
-else
-  echo
-  echo "需要 Node.js（>=18）。装好后再双击我，或手动执行："
-  echo "  node \"$DIR/dsh-doctor.mjs\""
-  echo
-  read -n 1 -s -r -p '按任意键关闭…'
-  exit 1
-fi
-"$NODE" "$DIR/dsh-doctor.mjs" "$@"
-echo
-read -n 1 -s -r -p '按任意键关闭…'
-'@
-[IO.File]::WriteAllText((Join-Path $release 'dsh-doctor.sh'), ($posix -replace "`r`n", "`n"), $utf8NoBom)
-[IO.File]::WriteAllText((Join-Path $release 'dsh-doctor.command'), ($mac -replace "`r`n", "`n"), $utf8NoBom)
+# ── 3) Linux / macOS 外壳（LF 换行，源码在 tools/launcher/）──────────────────
+foreach ($launcherFile in @('dsh-doctor.sh', 'dsh-doctor.command')) {
+    $source = Join-Path $root ('tools\launcher\' + $launcherFile)
+    $text = [IO.File]::ReadAllText($source, [Text.Encoding]::UTF8) -replace "`r`n", "`n"
+    [IO.File]::WriteAllText((Join-Path $release $launcherFile), $text, $utf8NoBom)
+}
 Write-Host 'built dsh-doctor.sh + dsh-doctor.command'
+
+# ── 4) 打 Unix 包（与 CI 用同一份布局；CI 里跑 tools/package-unix.sh）──────────
+$stage = Join-Path $env:TEMP ('dsh-doctor-unix-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path (Join-Path $stage 'plugin\lib') -Force | Out-Null
+Copy-Item (Join-Path $release 'dsh-doctor.mjs') $stage -Force
+Copy-Item (Join-Path $release 'dsh-doctor.sh') $stage -Force
+Copy-Item (Join-Path $release 'dsh-doctor.command') $stage -Force
+Copy-Item (Join-Path $pluginDir 'index.js') (Join-Path $stage 'plugin\lib\index.js') -Force
+& tar -czf (Join-Path $release 'dsh-doctor-unix.tar.gz') -C $stage '.'
+if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
+Remove-Item -LiteralPath $stage -Recurse -Force
+Write-Host 'built dsh-doctor-unix.tar.gz'
 
 Write-Host ''
 Write-Host 'dist/release/'
