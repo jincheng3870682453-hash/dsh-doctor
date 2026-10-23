@@ -582,6 +582,7 @@ const DETECTORS = {
 	'rescue-instance-dead': () => checkRescueInstance(),
 	'workspace-not-writable': () => checkWorkspaceWritability(),
 	'workspace-not-grantable': () => checkWorkspaceGrantability(),
+	'zombie-dsh-process': () => checkZombieProcesses(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -685,6 +686,7 @@ function scan() {
 		checkRescueInstance,
 		checkWorkspaceWritability,
 		checkWorkspaceGrantability,
+		checkZombieProcesses,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -754,10 +756,11 @@ function fixDesktopLabel() {
 	}
 	const after = aclSddl(desktop)
 	const verified = !/S:\(ML;;[^;]*;;;LW/.test(after)
+	if (verified) refreshShellIcons()
 	return {
 		ok: verified,
 		verified,
-		message: verified ? '桌面标签已改回 Medium，图标会自动恢复。' : '改完复检仍看到 Low 标签，请把这条反馈给我。',
+		message: verified ? '桌面标签已改回 Medium，并已通知外壳重新取图标。' : '改完复检仍看到 Low 标签，请把这条反馈给我。',
 		backup: save.ok ? backupFile : null,
 	}
 }
@@ -931,6 +934,11 @@ const FIXES = {
 	'profile-host-dup': fixProfileHostDup,
 	'restore-patch-layer': fixRestorePatchLayer,
 	'workspace-acl': fixWorkspaceAcl,
+	'reap-zombies': fixReapZombies,
+	'refresh-shell': () => {
+		const ok = refreshShellIcons()
+		return { ok, message: ok ? '已通知外壳重新取图标（不用重启资源管理器）。' : '刷新外壳失败，可以手动重启资源管理器。' }
+	},
 }
 
 /* ── 修复录（history.jsonl）──────────────────────────────────────────── */
@@ -1325,6 +1333,121 @@ async function rescueWeb() {
 	}
 }
 
+/* ── 自动巡检 / 刷新外壳 / 僵尸进程回收 ─────────────────────────────── */
+
+function autoFixEnabled() {
+	return String(process.env.DSH_DOCTOR_AUTOFIX || '1').toLowerCase() !== '0'
+}
+
+/** 让 Explorer 重新取图标（SHChangeNotify），不用重启资源管理器、不闪。 */
+function refreshShellIcons() {
+	if (!isWindows) return false
+	const script = [
+		"$sig = @'",
+		'using System;',
+		'using System.Runtime.InteropServices;',
+		'public class DshDocShell {',
+		'  [DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr i1, IntPtr i2);',
+		'}',
+		"'@",
+		'Add-Type -TypeDefinition $sig',
+		'[DshDocShell]::SHChangeNotify(0x08000000, 0x1000, [IntPtr]::Zero, [IntPtr]::Zero)',
+	].join('; ')
+	const result = powershell(script)
+	return result.ok
+}
+
+/** 列出"命令行里带 dsh + web + --port"的进程。 */
+function listDshWebProcesses() {
+	if (!isWindows) return []
+	const script = [
+		'$items = @()',
+		'Get-CimInstance Win32_Process -Filter "Name=\'node.exe\' OR Name=\'cmd.exe\'" | ForEach-Object {',
+		'  $line = [string]$_.CommandLine',
+		'  if ($line -match "dsh" -and $line -match "web" -and $line -match "--port\\s+(\\d+)") {',
+		'    $items += [pscustomobject]@{ pid = $_.ProcessId; port = [int]$Matches[1]; cmd = $line }',
+		'  }',
+		'}',
+		'[Console]::Out.Write(($items | ConvertTo-Json -Compress -Depth 3))',
+	].join('; ')
+	const result = powershell(script)
+	if (!result.ok || result.out.length === 0) return []
+	try {
+		const parsed = JSON.parse(result.out)
+		return Array.isArray(parsed) ? parsed : [parsed]
+	} catch (error) {
+		return []
+	}
+}
+
+/** 端口已经没人听、进程却还挂着的残余实例——回收它们，终结无限重载。 */
+function checkZombieProcesses() {
+	const findings = []
+	if (!isWindows) return findings
+	for (const item of listDshWebProcesses()) {
+		if (typeof item.port !== 'number' || typeof item.pid !== 'number') continue
+		if (item.pid === process.pid) continue
+		if (portInUse(item.port)) continue
+		findings.push(finding('zombie-dsh-process', 'medium',
+			'发现僵尸 DSH 进程：PID ' + item.pid + '（端口 ' + item.port + ' 已失效）',
+			'进程还挂着但端口已经没人监听，常见于逃生实例被杀后残留、或被沙箱打断的启动。回收它不会影响正在用的实例。',
+			'', 'reap-zombies'))
+	}
+	return findings
+}
+
+function fixReapZombies() {
+	const killed = []
+	for (const item of listDshWebProcesses()) {
+		if (typeof item.port !== 'number' || typeof item.pid !== 'number') continue
+		if (item.pid === process.pid) continue
+		if (portInUse(item.port)) continue
+		const result = powershell('Stop-Process -Id ' + item.pid + ' -Force -ErrorAction SilentlyContinue')
+		if (result.ok) killed.push(item.pid)
+	}
+	if (killed.length === 0) return { ok: true, unchanged: true, message: '没有发现可回收的僵尸进程。' }
+	return { ok: true, verified: true, message: '已回收 ' + killed.length + ' 个僵尸进程（PID：' + killed.join(', ') + '）。' }
+}
+
+/**
+ * 后台自动巡检：每 30 秒看一眼桌面完整性标签。
+ * 一旦被 DSH 重新降级（或收回拒绝项），立刻重置 + 刷新外壳，不打扰用户。
+ */
+function startAutoGuard(ctx) {
+	if (!isWindows || !autoFixEnabled()) return
+	let lastRun = 0
+	const tick = () => {
+		try {
+			const now = Date.now()
+			if (now - lastRun < 30000) return
+			lastRun = now
+			const desktop = desktopPath()
+			if (!existsSync(desktop)) return
+			const sddl = aclSddl(desktop)
+			if (sddl.length === 0) return
+			const low = /S:\(ML;;[^;]*;;;LW/.test(sddl)
+			const deny = /\(D;[^)]*;;;WD\)/.test(sddl)
+			if (!low && !deny) return
+			const result = fixDesktopLabel()
+			appendHistory({
+				at: new Date().toISOString(),
+				id: 'auto-desktop-label',
+				ok: result.ok === true,
+				changed: !(result.unchanged === true),
+				message: '自动巡检：' + String(result.message || ''),
+				backup: typeof result.backup === 'string' ? result.backup : null,
+			})
+			if (result.ok === true) refreshShellIcons()
+		} catch (error) { /* 守护自己不许抛 */ }
+	}
+	try {
+		ctx.effect(() => {
+			const timer = setInterval(tick, 30000)
+			return () => clearInterval(timer)
+		}, 'dsh-doctor: auto guard')
+	} catch (error) { /* 老版本 ctx 没有 effect 时静默降级 */ }
+}
+
 /* ── 给 AI 的求助报告 ───────────────────────────────────────────────── */
 
 function buildAiReport() {
@@ -1531,4 +1654,6 @@ export function apply(ctx) {
 			handler: handle,
 		}), 'dsh-doctor: status and fix routes')
 	})
+	// 后台巡检：DSH 再偷偷降级桌面标签，30 秒内自动拉回来。
+	startAutoGuard(ctx)
 }

@@ -6,9 +6,9 @@
 
 ### 只要是 DSH 引起的毛病，无论什么奇葩症状，我都能治好。
 
-**点一下修复。** DSH 桌面端把图标搞白了、整桌闪了、插件把会话炸了？点一下。
+**点一下修复。** DSH Doctor：不仅是修复工具，更是 DSH 桌面端的**底层运行时急救箱**——专治标签损坏 / 进程失控导致的图标变白、屏闪、白屏与启动崩溃。
 
-[![Version](https://img.shields.io/badge/Version-0.6.3-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.7.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -19,12 +19,20 @@
 
 ## 它做什么
 
-DSH 会在供给工作区时给目录盖上「低完整性标签 + 拒绝项」且从不回收——桌面被当成工作区，图标就全变白，而且修完还会复发。医生做的事：
+DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状态标签被改坏、后台进程失控而出现图标白纸、整屏狂闪时，医生直接介入运行时：
 
-- **查**：体检 10 项状态，每条带路径与原始证据，默认只读；
-- **修**：4 个动作一键执行，**先备份 → 改最小 → 立刻复检**，失败就还原；
+- 🩺 **自动巡检与修复**：后台每 30 秒巡逻一次桌面完整性标签。一旦被 DSH 重新降级、或又被塞进拒绝项，**立刻重置并通知外壳重取图标**——不重启资源管理器、不闪屏。开关：`DSH_DOCTOR_AUTOFIX=0`。
+- 💀 **僵尸进程回收**：定位"端口已经死了、进程却还挂着"的残余 DSH 实例，一键回收，终结无限重载；不影响正在用的实例。
+- 🛡️ **根源兜底**：只要是 DSH 引起的毛病，无论症状多奇葩，都从底层状态拉回正轨——不是清缓存、不是重启试试。
+
+再加四个常规能力：
+
+- **查**：体检 13 项状态，每条带路径与原始证据，默认只读；
+- **修**：一键修复，**先备份 → 改最小 → 立刻复检**，失败就还原；
 - **报**：一键生成**给 AI 的求助报告**（带提示词约束），复制发给任何 AI，或保存到桌面留档；
 - **逃**：实在修不好，生成桌面交接报告 + 起隔离端口的网页版，让网页版 DSH 接手。
+
+> **零环境也能用**：Windows 用自包含 `dsh-doctor.exe`（不装 Node、不装命令行）；连 Node 都没有，用 `dsh-doctor-env-win-x64.zip`（自带 `node.exe`）。
 
 ## 安装
 
