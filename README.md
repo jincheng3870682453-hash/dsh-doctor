@@ -1,6 +1,8 @@
 # DSH Doctor · DSH 私人医生
 
-> **DSH 桌面端把你桌面图标搞白了、整桌闪了、插件把会话炸了？点一下。**
+> ## 点一下修复。
+>
+> DSH 桌面端把你桌面图标搞白了、整桌闪了、插件把会话炸了？点一下。
 
 [![ci](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-2b6cb0)
