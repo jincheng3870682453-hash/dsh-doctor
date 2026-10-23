@@ -1083,12 +1083,12 @@ function findRuntime() {
 	const dsh = shell(isWindows ? 'where.exe dsh' : 'which -a dsh 2>/dev/null || command -v dsh 2>/dev/null')
 	if (dsh.ok && dsh.out.length > 0) {
 		const first = pick(dsh.out)
-		if (first && existsSync(first)) return { command: first, args: [], label: first }
+		if (first && existsSync(first)) return { command: first, args: [], label: first, kind: 'dsh' }
 	}
 	const npx = shell(isWindows ? 'where.exe npx' : 'which -a npx 2>/dev/null || command -v npx 2>/dev/null')
 	if (npx.ok && npx.out.length > 0) {
 		const first = pick(npx.out)
-		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@latest'], label: 'npx @deepseek-ai/dsh@latest' }
+		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@latest'], label: 'npx @deepseek-ai/dsh@latest', kind: 'npx' }
 	}
 	return null
 }
@@ -1201,10 +1201,31 @@ function tokenizedUrl(port, logFile) {
 	return 'http://127.0.0.1:' + port + '/'
 }
 
+/** 把带 token 的地址落到桌面：浏览器没自动弹出来时，用户还能手动复制。 */
+function writeUrlHint(url) {
+	try {
+		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
+		mkdirp(directory)
+		const file = join(directory, 'dsh-doctor-网页版地址.txt')
+		writeFileSync(file,
+			'DSH 网页版（逃生）地址：\n' + url + '\n\n'
+			+ '如果浏览器没有自动打开，把上面那行整段复制到浏览器地址栏（注意要带上 token）。\n'
+			+ '这个实例会一直开着；再点「起网页版」会复用同一个实例，不会新开。\n', 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
 async function rescueWeb() {
 	const runtime = findRuntime()
 	if (runtime === null) {
-		return { ok: false, message: '没找到可用的 dsh 运行时：PATH 里既没有 dsh，也没有 npx。' }
+		return {
+			ok: false,
+			message: '这台电脑没有可用的 dsh 运行时（PATH 里既没有 dsh 也没有 npx）。\n'
+				+ '两种情况：① 只装了 DSH 桌面端、没装命令行——请用「环境包」（自带 node，解压即用）；'
+				+ '② 装了 Node 但没配进 PATH——装一遍 Node 再点一次。',
+		}
 	}
 
 	// 1) 先复用已经在跑的逃生实例，避免每次点都新开一个、旧标签页变成"尸体"。
@@ -1215,12 +1236,15 @@ async function rescueWeb() {
 			const previousUrl = tokenizedUrl(previous.port, previous.log)
 			openBrowser(previousUrl)
 			const handoffFile = writeHandoffReport()
+			const urlHint = writeUrlHint(previousUrl)
 			return {
 				ok: true,
 				reused: true,
 				url: previousBase,
 				handoff: handoffFile,
+				urlFile: urlHint,
 				message: '复用已在运行的逃生实例：' + previousBase + '\n'
+					+ (urlHint !== null ? '桌面上已写好地址：' + urlHint + '\n' : '')
 					+ '（已用带 token 的地址重开浏览器；之前那些报 Failed to fetch 的旧标签页可以直接关掉。）',
 			}
 		}
@@ -1258,13 +1282,18 @@ async function rescueWeb() {
 	} catch (error) {
 		return { ok: false, message: '启动失败：' + String(error && error.message ? error.message : error) }
 	}
-	const ready = await waitForHttp(url, 30000)
+	// npx 第一次要下载，给它最多 3 分钟；本机 dsh 30 秒足够。
+	const waitMs = runtime.kind === 'npx' ? 180000 : 30000
+	const ready = await waitForHttp(url, waitMs)
 	if (!ready) {
+		const npxHint = runtime.kind === 'npx'
+			? '\n这次走的是 npx（需要联网下载 DSH）。如果一直没反应或报错，说明这台机器没有可用的 Node 环境——下载「环境包」解压后运行即可，不需要装 Node。'
+			: ''
 		return {
 			ok: false,
 			log: logFile,
-			message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 30 秒内没起来。'
-				+ '日志：' + logFile + '（首次 npx 下载慢也会这样，稍等再点一次）。',
+			message: '已尝试启动（' + runtime.label + ' --port ' + port + '），但 ' + Math.round(waitMs / 1000) + ' 秒内没起来。'
+				+ '\n日志：' + logFile + npxHint,
 		}
 	}
 	writeRescueRegistry({ port, url, log: logFile, startedAt: new Date().toISOString() })
@@ -1273,7 +1302,9 @@ async function rescueWeb() {
 		openBrowser(authenticatedUrl)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }
 	const handoff = writeHandoffReport()
+	const urlHint = writeUrlHint(authenticatedUrl)
 	const lines = ['网页版已启动：' + url]
+	if (urlHint !== null) lines.push('桌面上已写好地址：' + urlHint + '（浏览器没弹出来就手动复制它）')
 	lines.push(authenticatedUrl.indexOf('token=') >= 0
 		? '已用带 token 的地址打开浏览器（不带 token 的页面会报 Failed to fetch）。'
 		: '注意：启动日志里没找到 token，如果页面报 Failed to fetch，看日志：' + logFile)
@@ -1288,6 +1319,7 @@ async function rescueWeb() {
 		ok: true,
 		url,
 		handoff,
+		urlFile: urlHint,
 		log: logFile,
 		message: lines.join('\n'),
 	}
