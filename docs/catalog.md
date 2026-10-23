@@ -17,6 +17,8 @@
 | 8 | `credentials-version` / `credentials-no-version` | `credentials-version` | credentials 版本缺失或不是 1 → host 起不来 | 0.2 |
 | 9 | `patch-layer-missing` | `patch-layer-missing` | `cordis.patch.yml` 被崩溃自修复清空（有备份才算） | 0.2 |
 | 10 | `path-dead-dsh` | `path-dead-dsh` | PATH 里的 `dsh` 指向不存在的文件 | 0.2 |
+| 11 | `workspace-not-writable` | `workspace-not-writable` | 工作区真的写不进去（起不来 / grantWrite Win32 5） | 0.5.3 |
+| 12 | `workspace-not-grantable` | `workspace-not-grantable` | Windows：owner 不是你且没有 WRITE_DAC，DSH 授不了沙箱权限 | 0.5.3 |
 
 ## 二、修复项（可回滚）
 
@@ -26,6 +28,7 @@
 | 2 | `workspace-entry` | 从工作区注册表移除桌面类危险路径 | 优先走 DSH `workspaceRegistry.delete()`；文件兜底时备份 `workspace.json.bak-<ts>` | 重新列出工作区，确认危险路径已消失 | 重启桌面端 |
 | 3 | `profile-host-dup` | 把 profile 里的 `@deepseek-ai` 宿主包副本改名隔离 | 原名保留，加 `.stale-<ts>` 后缀即可改回 | 重新扫描，确认不再命中 | 重启桌面端 |
 | 4 | `restore-patch-layer` | 从最近的 `cordis.patch.yml.bak-*` 恢复 patch 层 | 当前空文件另存 `.empty-<ts>` | 重读文件大小 > 0 | 重启桌面端 |
+| 5 | `workspace-acl` | 给当前账号补工作区完全控制 | `~/.dsh/dsh-doctor-backups/workspace-acl-<ts>.txt`（`icacls /restore`） | 重新写测试文件成功 | 立即 |
 
 ## 三、只报告、不自动修（以及为什么）
 

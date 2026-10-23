@@ -65,6 +65,8 @@
 | `credentials-version` | — | credentials 文件版本是否缺失/不符 |
 | `patch-layer-missing` | — | `cordis.patch.yml` 是否被崩溃自修复清空（有备份才算） |
 | `path-dead-dsh` | — | PATH 里有没有指向不存在文件的 `dsh` 命令 |
+| `workspace-not-writable` | — | 工作区真的写不进去（会真写一个临时文件再删） |
+| `workspace-not-grantable` | — | Windows：owner 不是你、也没有 WRITE_DAC，DSH 授不了沙箱权限 |
 
 > 平台说明：`desktop-low-label` 只在 Windows 有；macOS/Linux 上桌面检查换成 `desktop-world-writable`（POSIX 权限位）。其余原语三平台通用。
 | `acl` | `path`、`test`（`low-label` / `everyone-deny`） | 任意目录的 ACL 判定 |
@@ -85,6 +87,7 @@
 | `workspace-entry` | 把危险工作区从注册表移除（优先走 DSH 服务，会话文件保留） |
 | `profile-host-dup` | 把 profile 里的宿主包副本改名隔离（可还原） |
 | `restore-patch-layer` | 从最近备份恢复被清空的 `cordis.patch.yml`（先备份当前状态） |
+| `workspace-acl` | 给当前账号补工作区完全控制（先备份 ACL，改完复测可写） |
 | （省略 `fix`） | 只报告，不提供修复按钮 |
 
 **没有 shell、没有任意命令、没有注册表任意写**——这是安全边界，不接受例外的 PR。

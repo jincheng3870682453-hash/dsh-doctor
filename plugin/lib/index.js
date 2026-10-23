@@ -9,7 +9,7 @@
  *
  * 设计约束：单条检查/修复失败不影响其它；不碰 DSH 安装目录；写操作先备份再复检。
  */
-import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync, openSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync, openSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync, spawn } from 'node:child_process'
@@ -461,6 +461,73 @@ function checkRescueInstance() {
 	return findings
 }
 
+/** Windows：DSH 要给工作区授沙箱权限，需要 owner 或 WRITE_DAC；缺了就会报 grantWrite Win32 5。 */
+function inspectWorkspaceDacl(path) {
+	if (!isWindows) return null
+	const script = [
+		'$acl = Get-Acl -LiteralPath ' + psQuote(path),
+		'$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+		'$owner = $acl.Owner',
+		'try { $owner = (New-Object Security.Principal.NTAccount($acl.Owner)).Translate([Security.Principal.SecurityIdentifier]).Value } catch {}',
+		'$canChange = $false',
+		'foreach ($ace in $acl.Access) {',
+		'  if ($ace.AccessControlType -ne "Allow") { continue }',
+		'  try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { continue }',
+		'  if ($sid -ne $me) { continue }',
+		'  $rights = [int]$ace.FileSystemRights',
+		'  if (($rights -band 0x40000) -eq 0x40000) { $canChange = $true }',
+		'}',
+		'[Console]::Out.Write((@{ owner = $owner; me = $me; canChange = $canChange } | ConvertTo-Json -Compress))',
+	].join('; ')
+	const result = powershell(script)
+	if (!result.ok || result.out.length === 0) return null
+	try { return JSON.parse(result.out) } catch (error) { return null }
+}
+
+function checkWorkspaceGrantability() {
+	const findings = []
+	if (!isWindows) return findings
+	const registry = readWorkspaceRegistry()
+	if (registry === null) return findings
+	for (const workspace of registry.list) {
+		if (!existsSync(workspace.path)) continue
+		const info = inspectWorkspaceDacl(workspace.path)
+		if (info === null) continue
+		if (info.owner === info.me || info.canChange === true) continue
+		findings.push(finding('workspace-not-grantable', 'high',
+			'DSH 可能无法给这个工作区授权：' + workspace.title,
+			'这个目录的所有者不是你，你的账号也没有「更改权限」（WRITE_DAC）——DSH 在供给沙箱时会拿不到写入能力，'
+				+ '表现为 grantWrite Win32 5 / 一开终端就报错。一键修复会给当前账号补完全控制（先备份 ACL）。',
+			workspace.path, 'workspace-acl'))
+	}
+	return findings
+}
+
+/** 工作区可写性：真写一个临时文件再删掉——这是"起不来"最硬的证据。 */
+function checkWorkspaceWritability() {
+	const findings = []
+	const registry = readWorkspaceRegistry()
+	if (registry === null) return findings
+	for (const workspace of registry.list) {
+		const target = workspace.path
+		if (!existsSync(target)) continue
+		const probe = join(target, '.dsh-doctor-write-test-' + process.pid + '-' + Date.now() + '.tmp')
+		try {
+			writeFileSync(probe, 'ok', 'utf8')
+			try { unlinkSync(probe) } catch (error) { /* 删不掉不算致命 */ }
+		} catch (error) {
+			const message = String(error && error.message ? error.message : error)
+			findings.push(finding('workspace-not-writable', 'high',
+				'工作区写不进去：' + workspace.title,
+				'医生真写了一个临时文件来验证，失败了：' + message
+					+ '。表现就是 DSH 起不来、终端一开就报 grantWrite / EACCES。'
+					+ (isWindows ? '一键修复会给当前账号补上完全控制（先备份 ACL）。' : '请手动检查该目录权限。'),
+				target, isWindows ? 'workspace-acl' : null))
+		}
+	}
+	return findings
+}
+
 /* ── 社区检查包（协议 v1）──────────────────────────────────────────── */
 
 const PACK_DIR = () => join(dshHome(), 'dsh-doctor', 'checks')
@@ -513,6 +580,8 @@ const DETECTORS = {
 	'patch-layer-missing': () => checkPatchLayer(),
 	'path-dead-dsh': () => checkPathVariable(),
 	'rescue-instance-dead': () => checkRescueInstance(),
+	'workspace-not-writable': () => checkWorkspaceWritability(),
+	'workspace-not-grantable': () => checkWorkspaceGrantability(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -614,6 +683,8 @@ function scan() {
 		checkPatchLayer,
 		checkPathVariable,
 		checkRescueInstance,
+		checkWorkspaceWritability,
+		checkWorkspaceGrantability,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -805,11 +876,61 @@ function fixRestorePatchLayer() {
 	}
 }
 
+function fixWorkspaceAcl() {
+	if (!isWindows) return { ok: false, message: '当前平台不支持自动补 ACL，请手动检查目录权限。' }
+	const registry = readWorkspaceRegistry()
+	if (registry === null) return { ok: true, unchanged: true, message: '没有工作区注册表，不需要修。' }
+	const sidResult = powershell('[Console]::Out.Write(([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value)')
+	const sid = sidResult.ok ? sidResult.out.trim() : ''
+	if (sid.length === 0) return { ok: false, message: '拿不到当前用户 SID，无法补 ACL。' }
+
+	const repaired = []
+	const failed = []
+	for (const workspace of registry.list) {
+		const target = workspace.path
+		if (!existsSync(target)) continue
+		const probe = join(target, '.dsh-doctor-write-test-' + process.pid + '-' + Date.now() + '.tmp')
+		let writable = true
+		try {
+			writeFileSync(probe, 'ok', 'utf8')
+			try { unlinkSync(probe) } catch (error) { /* ignore */ }
+		} catch (error) {
+			writable = false
+		}
+		if (writable) continue
+		const backupFile = join(backupDir(), 'workspace-acl-' + Date.now() + '.txt')
+		const save = powershell('icacls ' + quote(target) + ' /save ' + quote(backupFile))
+		const grant = powershell('icacls ' + quote(target) + ' /grant "*' + sid + ':(OI)(CI)F" /C')
+		let verified = false
+		try {
+			writeFileSync(probe, 'ok', 'utf8')
+			try { unlinkSync(probe) } catch (error) { /* ignore */ }
+			verified = true
+		} catch (error) {
+			verified = false
+		}
+		if (verified) repaired.push(target + (save.ok ? ' (备份 ' + backupFile + ')' : ''))
+		else failed.push(target + '：' + (grant.err || grant.out || '仍然写不进去'))
+	}
+	if (repaired.length === 0 && failed.length === 0) {
+		return { ok: true, unchanged: true, message: '所有工作区都可写，不需要修。' }
+	}
+	if (failed.length > 0) {
+		return { ok: false, message: '部分工作区仍然不可写：' + failed.join('；') }
+	}
+	return {
+		ok: true,
+		verified: true,
+		message: '已给当前账号补上完全控制并复测通过：' + repaired.join('、') + '。重启桌面端后生效。',
+	}
+}
+
 const FIXES = {
 	'desktop-label': fixDesktopLabel,
 	'workspace-entry': fixWorkspaceEntries,
 	'profile-host-dup': fixProfileHostDup,
 	'restore-patch-layer': fixRestorePatchLayer,
+	'workspace-acl': fixWorkspaceAcl,
 }
 
 /* ── 修复录（history.jsonl）──────────────────────────────────────────── */

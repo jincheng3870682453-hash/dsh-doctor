@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.3 — 2026-10-23
+
+- **新增「工作区能不能被 DSH 接管」检查**（此前完全没查，是盲区）：
+  - `workspace-not-writable`：真写一个临时文件再删，失败即高危（表现是起不来 / `grantWrite Win32 5`）；
+  - `workspace-not-grantable`（Windows）：owner 不是你、也没有 WRITE_DAC 时，DSH 无法给沙箱授权；
+  - 修复 `workspace-acl`：先 `icacls /save` 备份，再给当前账号补完全控制，改完**复测可写**才报成功。
+- 命令行 / MCP 自动获得同一能力（共用核心）。
+
 ## v0.5.2 — 2026-10-23
 
 - **图标统一**：插件图标换成品牌 Logo（渐变环 + 粉色状态点），与 README、发行包一致。

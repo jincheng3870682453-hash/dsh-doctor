@@ -46,6 +46,8 @@
             "credentials-version",
             "patch-layer-missing",
             "path-dead-dsh",
+            "workspace-not-writable",
+            "workspace-not-grantable",
             "acl",
             "file-regex",
             "dir-contains"
@@ -80,7 +82,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup", "restore-patch-layer"] }
+        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup", "restore-patch-layer", "workspace-acl"] }
       }
     }
   }
