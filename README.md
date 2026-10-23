@@ -4,11 +4,11 @@
 
 <img src="assets/logo.svg" width="96" alt="DSH 私人医生" />
 
-### 点一下修复。
+### 只要是 DSH 引起的毛病，无论什么奇葩症状，我都能治好。
 
-**DSH 桌面端把图标搞白了、整桌闪了、插件把会话炸了？点一下。**
+**点一下修复。** DSH 桌面端把图标搞白了、整桌闪了、插件把会话炸了？点一下。
 
-[![Version](https://img.shields.io/badge/Version-0.5.2-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.6.3-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -45,20 +45,27 @@ node dsh-doctor.mjs fix workspace-entry
 
 ## 能修什么
 
-| 检查 | 现象 | 一键修 |
+**点开表格里的症状，看那条的根因、医生怎么治、以及它对应哪个坑。**
+
+| 你看到的 | 一键修 | 详情 |
 |---|---|---|
-| 桌面 Low 完整性标签 | 图标变白纸 | ✅ |
-| 工作区注册在桌面 | 白图标反复复发 | ✅ |
-| profile 宿主包副本 | `reading 'prepare'` | ✅ |
-| `cordis.patch.yml` 被清空 | 主题/模型/provider 全没了 | ✅ |
-| 会话把桌面当工作区 | 整桌闪 | 提示 |
-| 老会话 `kind:"plugin"` | 会话打不开 | 只报告 |
-| credentials / PATH / 崩溃日志 / 逃生实例失效 | 起不来、命令不工作 | 只报告 |
+| 桌面图标全变白纸 | ✅ | [看这条](docs/fixable.md#icon-white) |
+| 整桌图标一起闪 | 查到是谁在写桌面 | [看这条](docs/fixable.md#flicker) |
+| 白图标修完又复发 | ✅ 断根 | [看这条](docs/fixable.md#workspace) |
+| 一开终端就报 `grantWrite` / Node 起不来 | ✅ 补权限并复测 | [看这条](docs/fixable.md#grant) |
+| `reading 'prepare'` 每轮都炸 | ✅ 隔离副本 | [看这条](docs/fixable.md#hostdup) |
+| 双击没反应、`is incompatible with dsh` | ✅ 隔离旧副本 | [看这条](docs/fixable.md#version-skew) |
+| 主题 / 模型 / MCP 配置全丢了 | ✅ 恢复 patch 层 | [看这条](docs/fixable.md#patch) |
+| 某个会话打不开 / 每轮报错 | 只报告 | [看这条](docs/fixable.md#session) |
+| credentials / PATH / 崩溃日志 / 逃生地址失效 | 只报告 | [看这条](docs/fixable.md#credentials) |
+
+> 完整清单（含"不负责的花屏/蓝屏"边界）：**[docs/fixable.md](docs/fixable.md)**
 
 ## 文档
 
 | | |
 |---|---|
+| [docs/fixable.md](docs/fixable.md) | **修复清单**：按症状列出能修 / 只查，以及根因 |
 | [docs/catalog.md](docs/catalog.md) | 修复目录：每条检查 / 备份位置 / 验证方式 |
 | [docs/traps.md](docs/traps.md) | 踩雷清单 14 类，含根因与手工修复 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |

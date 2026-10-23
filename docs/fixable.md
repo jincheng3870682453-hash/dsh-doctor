@@ -1,0 +1,119 @@
+# 能修什么 · 修复清单
+
+> **只要是 DSH 引起的毛病，无论什么奇葩症状，我都能治好。**
+>
+> 这张表按"你看到的现象"排。✅ = 医生能一键修；🔍 = 只能查出来并告诉你下一步（自动改风险太高）。
+
+---
+
+<a id="icon-white"></a>
+## 🖥️ 桌面图标全变白纸
+
+- **你会看到**：桌面上所有快捷方式、文件夹都变成白色空白图标，但"此电脑/回收站"正常。
+- **根因**：DSH 把桌面注册成工作区，每次授沙箱权限都会给桌面盖上「低完整性标签 + 拒绝项」，Explorer 读不到图标。
+- **医生**：✅ 一键把标签改回 Medium、摘掉拒绝项（保留写入能力）；并提示你把工作区从注册表移走，否则会复发。
+- **详情**：[traps #1](traps.md) · [catalog](../docs/catalog.md)
+
+<a id="flicker"></a>
+## 🌀 桌面上所有图标一起闪
+
+- **你会看到**：不是某一个图标闪，是整桌一起"刷"一下，隔几秒一次。
+- **根因**：有程序在反复往桌面目录写文件（最常见：某个 DSH 会话把桌面当工作区），Explorer 每次都要重画整个桌面。
+- **医生**：🔍 查出"哪个会话把桌面当工作区"，并把它从工作区注册表里移除。
+- **详情**：[traps #13](traps.md)
+
+<a id="workspace"></a>
+## 📌 白图标修完又复发
+
+- **你会看到**：修好没几小时/重启后又白。
+- **根因**：工作区还注册在桌面上，下一次供给就重新盖标签。
+- **医生**：✅ 把危险工作区从注册表移除（走 DSH 自己的服务，不被内存覆盖），断根。
+- **详情**：[traps #2](traps.md)
+
+<a id="grant"></a>
+## 🔐 一开终端就报错 / DSH 起不来
+
+- **你会看到**：`SetNamedSecurityInfoW failed (Win32 5): grantWrite(...)`、`grantWrite` 被拒、终端开不出来、Node 起不来。
+- **根因**：工作区目录的 ACL 不允许 DSH 授写权限（owner 不是你，或你没有 WRITE_DAC）。
+- **医生**：✅ 先 `icacls /save` 备份 ACL，再给当前账号补完全控制，改完**真写一个文件复测**。
+- **详情**：[traps #3](traps.md)
+
+<a id="hostdup"></a>
+## 💥 `Cannot read properties of undefined (reading 'prepare')`
+
+- **你会看到**：每轮对话都炸，报这行。
+- **根因**：同一进程里混进了第二份 `@deepseek-ai/dsh-tools`（插件把宿主包写进了 `dependencies`，pnpm 装了一份真副本）。
+- **医生**：✅ 只把 `dsh-tools / dsh-skill / schemastery / dsh-util-values / cordis` 这几份副本挪进备份目录，**同目录下的合法插件不动**。
+- **详情**：[traps #5](traps.md)
+
+<a id="version-skew"></a>
+## 🧨 双击图标没反应 / `Plugin ... is incompatible with dsh`
+
+- **你会看到**：启动秒退，`DesktopHostFatalError: 1 required plugin did not activate`。
+- **根因**：profile 里被平铺进了**旧版本**宿主包，兼容性守卫禁用了 `tools`，依赖它的 required 插件永远等不到。
+- **医生**：✅ 隔离旧副本（同 #hostdup 的机制），并提示摘掉那个老插件。
+- **详情**：[traps #14](traps.md)
+
+<a id="patch"></a>
+## 🧩 主题 / 模型 / MCP 配置全没了
+
+- **你会看到**：崩溃重启后，浅色主题、模型 provider、MCP 配置全丢失。
+- **根因**：崩溃自修复把 `cordis.patch.yml` 清空了。
+- **医生**：✅ 从最近的 `cordis.patch.yml.bak-*` 恢复（先把当前空文件另存）。
+- **详情**：[traps #10](traps.md)
+
+<a id="session"></a>
+## 💬 某个会话打不开 / 每轮都报错
+
+- **你会看到**：`format v4 message requires a producer-owned source kind`；或只有打开老会话才炸。
+- **根因**：会话里带旧写法 `{"kind":"plugin"}`（v4 拒收），或 v3→v4 迁移表缺插件 id。
+- **医生**：🔍 只读扫描会话文件（逐帧 zstd 解压）并指出是哪个文件；**不改写**——改写会话出错会丢历史。
+- **详情**：[traps #8 / #9](traps.md)
+
+<a id="credentials"></a>
+## 🔐 host 起不来、credentials 报版本矛盾
+
+- **你会看到**：`...declares version "1"; this build reads version 1` 这类自相矛盾的报错。
+- **医生**：🔍 检查 `.credentials.yaml` 的 `version` 字段是否缺失/不符；不自动改（版本语义和构建绑定，猜错更糟）。
+- **详情**：[traps #10](traps.md)
+
+<a id="path"></a>
+## 🧭 `dsh` 命令莫名其妙不工作
+
+- **你会看到**：`dsh` 说没装、或版本不对、或多套安装打架。
+- **医生**：🔍 检查 PATH 里是否有指向不存在文件的 `dsh`；只指出是哪一条。
+- **详情**：[traps #12](traps.md)
+
+<a id="rescue"></a>
+## 🏚️ 网页版页面报 `Failed to fetch`
+
+- **你会看到**：浏览器里打开逃生地址，设置页、插件列表全报错。
+- **根因**：那个标签页指向的 host 已经退出（端口死了），或者打开的是**不带 token** 的地址。
+- **医生**：🔍 识别"上次逃生实例已失效"并提醒；「起网页版」现在会复用活实例、用带 token 的地址打开、并把地址写到桌面。
+- **详情**：[traps #14](traps.md) · [design](design.md)
+
+<a id="crash"></a>
+## 🧾 想知道之前崩过几次
+
+- **医生**：🔍 列出 `%APPDATA%\@deepseek-ai\dsh-desktop\logs\crash-*.log` 的数量与最近时间（renderer 崩溃常不带栈，只能靠时间关联）。
+
+<a id="not-covered"></a>
+## 🚫 不负责的（别误会）
+
+| 现象 | 为什么不管 |
+|---|---|
+| 花屏、MPO 抽帧、HDR 偏色、刷新率问题 | 显卡/显示层，不是 DSH 改的；只给线索，不假装能修 |
+| 系统崩溃、蓝屏 | 超出范围 |
+| DSH 内部逻辑错误（不落在本机状态上） | 医生的对象是"系统状态"，不是 DSH 源码 |
+
+---
+
+## 怎么用
+
+| 入口 | 用法 |
+|---|---|
+| 插件面板 | 侧边栏「私人医生」→ 体检 → 每条问题点「一键修复」 |
+| Windows EXE | `dsh-doctor.exe`（自包含） |
+| 没装 Node | `dsh-doctor-env-win-x64.zip`（自带 node.exe） |
+| 命令行 | `node dsh-doctor.mjs scan / fix <id> / report` |
+| 给 AI 看 | 面板「生成报告」→ 复制给任意 AI（带提示词约束） |
