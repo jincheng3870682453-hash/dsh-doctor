@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1 — 2026-10-23
+
+- **全流程上云**：GitHub Actions 负责编译与测试，本机不再手工出包。
+  - `ci.yml`：三系统冒烟（ubuntu / macos / windows）+ PowerShell 冒烟 + 假 DSH 目录上的集成修复测试（校验记录删除、引用清理、备份存在）+ **30 次连续扫描压力测试**；
+  - `build.yml`：云端编译 Windows EXE 与 Unix 包，并对产物本身跑一次 `scan`；打 `v*` tag 时自动创建 GitHub Release 并上传资产。
+- 本地 `tools/build.ps1` 与 CI 使用同一份布局；Unix 包由 `tools/package-unix.sh` 生成。
+
 ## v0.5.0 — 2026-10-23
 
 - **三平台发行包**：不再只有 Windows 的 EXE。
