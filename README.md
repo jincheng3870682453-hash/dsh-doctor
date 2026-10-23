@@ -8,7 +8,7 @@
 
 **点一下修复。** DSH Doctor：不仅是修复工具，更是 DSH 桌面端的**底层运行时急救箱**——专治标签损坏 / 进程失控导致的图标变白、屏闪、白屏与启动崩溃。
 
-[![Version](https://img.shields.io/badge/Version-0.7.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.8.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -21,9 +21,9 @@
 
 DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状态标签被改坏、后台进程失控而出现图标白纸、整屏狂闪时，医生直接介入运行时：
 
-- 🩺 **自动巡检与修复**：后台每 30 秒巡逻一次桌面完整性标签。一旦被 DSH 重新降级、或又被塞进拒绝项，**立刻重置并通知外壳重取图标**——不重启资源管理器、不闪屏。开关：`DSH_DOCTOR_AUTOFIX=0`。
-- 💀 **僵尸进程回收**：定位"端口已经死了、进程却还挂着"的残余 DSH 实例，一键回收，终结无限重载；不影响正在用的实例。
-- 🛡️ **根源兜底**：只要是 DSH 引起的毛病，无论症状多奇葩，都从底层状态拉回正轨——不是清缓存、不是重启试试。
+-  **自动巡检与修复**：后台每 30 秒巡逻一次桌面完整性标签。一旦被 DSH 重新降级、或又被塞进拒绝项，**立刻重置并通知外壳重取图标**——不重启资源管理器、不闪屏。开关：`DSH_DOCTOR_AUTOFIX=0`。
+-  **僵尸进程回收**：定位"端口已经死了、进程却还挂着"的残余 DSH 实例，一键回收，终结无限重载；不影响正在用的实例。
+-  **根源兜底**：只要是 DSH 引起的毛病，无论症状多奇葩，都从底层状态拉回正轨——不是清缓存、不是重启试试。
 
 再加四个常规能力：
 
@@ -57,13 +57,13 @@ node dsh-doctor.mjs fix workspace-entry
 
 | 你看到的 | 一键修 | 详情 |
 |---|---|---|
-| 桌面图标全变白纸 | ✅ | [看这条](docs/fixable.md#icon-white) |
+| 桌面图标全变白纸 | 可 | [看这条](docs/fixable.md#icon-white) |
 | 整桌图标一起闪 | 查到是谁在写桌面 | [看这条](docs/fixable.md#flicker) |
-| 白图标修完又复发 | ✅ 断根 | [看这条](docs/fixable.md#workspace) |
-| 一开终端就报 `grantWrite` / Node 起不来 | ✅ 补权限并复测 | [看这条](docs/fixable.md#grant) |
-| `reading 'prepare'` 每轮都炸 | ✅ 隔离副本 | [看这条](docs/fixable.md#hostdup) |
-| 双击没反应、`is incompatible with dsh` | ✅ 隔离旧副本 | [看这条](docs/fixable.md#version-skew) |
-| 主题 / 模型 / MCP 配置全丢了 | ✅ 恢复 patch 层 | [看这条](docs/fixable.md#patch) |
+| 白图标修完又复发 | 可 断根 | [看这条](docs/fixable.md#workspace) |
+| 一开终端就报 `grantWrite` / Node 起不来 | 可 补权限并复测 | [看这条](docs/fixable.md#grant) |
+| `reading 'prepare'` 每轮都炸 | 可 隔离副本 | [看这条](docs/fixable.md#hostdup) |
+| 双击没反应、`is incompatible with dsh` | 可 隔离旧副本 | [看这条](docs/fixable.md#version-skew) |
+| 主题 / 模型 / MCP 配置全丢了 | 可 恢复 patch 层 | [看这条](docs/fixable.md#patch) |
 | 某个会话打不开 / 每轮报错 | 只报告 | [看这条](docs/fixable.md#session) |
 | credentials / PATH / 崩溃日志 / 逃生地址失效 | 只报告 | [看这条](docs/fixable.md#credentials) |
 

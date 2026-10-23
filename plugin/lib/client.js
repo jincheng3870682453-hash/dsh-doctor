@@ -144,6 +144,22 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
+		async function fetchUpdate() {
+			const response = await fetch('/dsh-doctor/update', { headers: { accept: 'application/json' } })
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
+		async function openReleasePage(url) {
+			const response = await fetch('/dsh-doctor/update/open', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ url }),
+			})
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
 		async function saveReportFile() {
 			const response = await fetch('/dsh-doctor/report/save', {
 				method: 'POST',
@@ -260,6 +276,8 @@ window.__ModuleLoader__.load({
 			const [rescueArmed, setRescueArmed] = React.useState(false)
 			const [report, setReport] = React.useState(null)
 			const [reportBusy, setReportBusy] = React.useState(false)
+			const [updateInfo, setUpdateInfo] = React.useState(null)
+			const [updateBusy, setUpdateBusy] = React.useState(false)
 
 			// 每条消息 6 秒后自己消失（"完成后弹个消息"）。
 			React.useEffect(() => {
@@ -294,6 +312,31 @@ window.__ModuleLoader__.load({
 			}, [])
 
 			React.useEffect(() => { refresh() }, [refresh])
+
+			const onCheckUpdate = () => {
+				setUpdateBusy(true)
+				fetchUpdate().then((data) => {
+					setUpdateInfo(data)
+					if (data !== null && data.ok === true && data.newer === true) {
+						setToast({ ok: true, text: '发现新版本 ' + data.latest + '（当前 ' + data.current + '），点「打开下载页」去更新。' })
+					} else if (data !== null && data.ok === true) {
+						setToast({ ok: true, text: '已是最新版本 ' + data.current + '。' })
+					} else {
+						setToast({ ok: false, text: String(data !== null && data.message ? data.message : '检查更新失败') })
+					}
+				}, (reason) => {
+					setToast({ ok: false, text: '检查更新失败：' + String(reason && reason.message ? reason.message : reason) })
+				}).then(() => { setUpdateBusy(false) })
+			}
+
+			const onOpenRelease = () => {
+				const url = updateInfo !== null && typeof updateInfo.url === 'string' ? updateInfo.url : ''
+				openReleasePage(url).then((data) => {
+					setToast({ ok: data !== null && data.ok === true, text: String(data !== null && data.message ? data.message : '完成') })
+				}, (reason) => {
+					setToast({ ok: false, text: '打开下载页失败：' + String(reason && reason.message ? reason.message : reason) })
+				})
+			}
 
 			const onReport = () => {
 				setReportBusy(true)
@@ -455,8 +498,8 @@ window.__ModuleLoader__.load({
 						h('div', { className: 'dshdr-slogan' }, '点一下修复。'),
 					),
 					h('div', { className: 'dshdr-actions' },
+						h('button', { type: 'button', className: 'dshdr-btn', onClick: onCheckUpdate, disabled: updateBusy }, updateBusy ? '检查中…' : '检查更新'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onReport, disabled: reportBusy }, reportBusy ? '生成中…' : '生成报告'),
-						h('button', { type: 'button', className: 'dshdr-btn', onClick: onTestNotify }, '测试通知'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onRescue, disabled: rescuing }, rescuing ? '启动中…' : '起网页版'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
 					),
@@ -466,6 +509,22 @@ window.__ModuleLoader__.load({
 
 				toast !== null
 					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
+					: null,
+
+				updateInfo !== null && updateInfo.ok === true && updateInfo.newer === true
+					? h('div', { className: 'dshdr-card dshdr-card-medium' },
+						h('div', { className: 'dshdr-card-head' },
+							h('span', { className: 'dshdr-chip dshdr-medium' }, '更新'),
+							h('span', { className: 'dshdr-name' }, '发现新版本 ' + String(updateInfo.latest)),
+							h('div', { className: 'dshdr-actions' },
+								h('button', { type: 'button', className: 'dshdr-btn dshdr-btn-primary', onClick: onOpenRelease }, '打开下载页'),
+								h('button', { type: 'button', className: 'dshdr-btn', onClick: () => setUpdateInfo(null) }, '忽略'),
+							),
+						),
+						h('div', { className: 'dshdr-detail' },
+							'当前版本 ' + String(updateInfo.current)
+								+ (updateInfo.publishedAt ? ' · 新版发布于 ' + new Date(updateInfo.publishedAt).toLocaleString() : '')),
+					)
 					: null,
 
 				report !== null
@@ -513,7 +572,15 @@ window.__ModuleLoader__.load({
 						? '只在本机运行，不上传任何数据。'
 						: 'DSH 目录：' + String(env.dshHome) + ' · 平台：' + String(env.platform || '') + ' · profile：'
 							+ (Array.isArray(env.profiles) ? env.profiles.join('、') : '')),
-					h('div', null, '只修改这几类已知问题；每次修复先备份、改完复检，不动安装目录。'),
+					h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
+						h('span', null, '只修改这几类已知问题；每次修复先备份、改完复检，不动安装目录。'),
+						h('button', {
+							type: 'button',
+							className: 'dshdr-btn',
+							style: { height: '22px', padding: '0 8px', fontSize: '11px' },
+							onClick: onTestNotify,
+						}, '测试通知'),
+					),
 				),
 			)
 		}

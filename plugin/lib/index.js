@@ -1448,6 +1448,64 @@ function startAutoGuard(ctx) {
 	} catch (error) { /* 老版本 ctx 没有 effect 时静默降级 */ }
 }
 
+/* ── 自动更新 ───────────────────────────────────────────────────────── */
+
+const REPO = 'jincheng3870682453-hash/dsh-doctor'
+const RELEASES_URL = 'https://github.com/' + REPO + '/releases'
+
+function readOwnVersion() {
+	try {
+		return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version || '0.0.0'
+	} catch (error) {
+		return '0.0.0'
+	}
+}
+
+function compareVersions(left, right) {
+	const a = String(left).replace(/^v/, '').split('.').map(part => Number(part.replace(/\D.*$/, '')) || 0)
+	const b = String(right).replace(/^v/, '').split('.').map(part => Number(part.replace(/\D.*$/, '')) || 0)
+	for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+		const x = a[index] || 0
+		const y = b[index] || 0
+		if (x !== y) return x > y ? 1 : -1
+	}
+	return 0
+}
+
+async function checkUpdate() {
+	const current = readOwnVersion()
+	try {
+		const response = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest', {
+			headers: { 'user-agent': 'dsh-doctor', accept: 'application/vnd.github+json' },
+			signal: AbortSignal.timeout(10000),
+		})
+		if (!response.ok) {
+			return { ok: false, current, message: '检查更新失败：GitHub 返回 HTTP ' + response.status }
+		}
+		const data = await response.json()
+		const latest = String(data.tag_name || '').replace(/^v/, '')
+		return {
+			ok: true,
+			current,
+			latest,
+			newer: compareVersions(latest, current) > 0,
+			url: String(data.html_url || RELEASES_URL),
+			publishedAt: data.published_at || null,
+			name: data.name || null,
+		}
+	} catch (error) {
+		return { ok: false, current, message: '检查更新失败（可能连不上 GitHub）：' + String(error && error.message ? error.message : error) }
+	}
+}
+
+/** 只允许打开本仓库的 Release 页面，避免变成任意 URL 的跳板。 */
+function openReleasePage(url) {
+	const target = String(url || RELEASES_URL)
+	if (!target.startsWith(RELEASES_URL)) return { ok: false, message: '只允许打开本仓库的 Release 页面。' }
+	openBrowser(target)
+	return { ok: true, message: '已在浏览器打开下载页：' + target }
+}
+
 /* ── 给 AI 的求助报告 ───────────────────────────────────────────────── */
 
 function buildAiReport() {
@@ -1556,6 +1614,20 @@ async function handle(req, res) {
 			send(res, 200, { ok: true, findings, summary, environment: environment() })
 			return
 		}
+		if (path === PREFIX + '/update' && req.method === 'GET') {
+			send(res, 200, await checkUpdate())
+			return
+		}
+		if (path === PREFIX + '/update/open' && req.method === 'POST') {
+			const raw = await readBody(req)
+			let url = RELEASES_URL
+			try {
+				const parsed = JSON.parse(raw)
+				if (parsed !== null && typeof parsed.url === 'string') url = parsed.url
+			} catch (error) { /* 用默认地址 */ }
+			send(res, 200, openReleasePage(url))
+			return
+		}
 		if (path === PREFIX + '/report' && req.method === 'GET') {
 			send(res, 200, { ok: true, markdown: buildAiReport() })
 			return
@@ -1633,7 +1705,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]

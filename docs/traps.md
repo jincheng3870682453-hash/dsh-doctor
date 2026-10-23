@@ -16,7 +16,7 @@
 ```
 S-1-4-xxx:(OI)(CI)(W,D,DC)            ← 能力 ACE（放行写入）
 Everyone:(CI)(DENY)(DC)               ← 拒绝删除
-Mandatory Label\Low:(OI)(CI)(NW)      ← ★ 元凶
+Mandatory Label\Low:(OI)(CI)(NW)      ←  元凶
 ```
 
 Explorer 在 Low 完整性目录里取不到图标 → 全白。

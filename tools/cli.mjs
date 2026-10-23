@@ -24,15 +24,15 @@ function line(text) { process.stdout.write(text + '\n') }
 function hr() { line('─'.repeat(72)) }
 
 function severityLabel(severity) {
-	if (severity === 'high') return '🔴 高危'
-	if (severity === 'medium') return '🟡 提醒'
-	return '⚪ 信息'
+	if (severity === 'high') return '[高危]'
+	if (severity === 'medium') return '[提醒]'
+	return '[信息]'
 }
 
 function printFindings(findings) {
 	line('')
 	if (findings.length === 0) {
-		line('✅ 没有发现问题。')
+		line('没有发现问题。')
 		return
 	}
 	for (const item of findings) {
@@ -65,7 +65,7 @@ async function showHistory() {
 	if (entries.length === 0) { line('还没有修复记录。'); return }
 	line('修复录（最近 ' + entries.length + ' 条）：')
 	for (const entry of entries) {
-		line('  ' + (entry.ok === true ? '✅' : '❌') + '  ' + entry.at + '  ' + entry.id)
+		line('  ' + (entry.ok === true ? '[成功]' : '[失败]') + '  ' + entry.at + '  ' + entry.id)
 		if (entry.message) line('      ' + entry.message)
 	}
 }

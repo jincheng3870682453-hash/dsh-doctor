@@ -37,15 +37,15 @@
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `protocolVersion` | ✅ | 固定 `1` |
-| `id` | ✅ | 包标识（小写、连字符） |
-| `title` | ✅ | 人话标题，面板里会显示 |
-| `checks[]` | ✅ | 检查项数组 |
-| `checks[].id` | ✅ | 检查项标识（全局唯一，建议带包前缀） |
-| `checks[].title` | ✅ | 这一条问题的人话标题 |
-| `checks[].severity` | ✅ | `high` / `medium` / `low` |
+| `protocolVersion` |  | 固定 `1` |
+| `id` |  | 包标识（小写、连字符） |
+| `title` |  | 人话标题，面板里会显示 |
+| `checks[]` |  | 检查项数组 |
+| `checks[].id` |  | 检查项标识（全局唯一，建议带包前缀） |
+| `checks[].title` |  | 这一条问题的人话标题 |
+| `checks[].severity` |  | `high` / `medium` / `low` |
 | `checks[].detail` | 建议 | 为什么出问题、怎么理解 |
-| `checks[].detect` | ✅ | 检测方式，见 §3 |
+| `checks[].detect` |  | 检测方式，见 §3 |
 | `checks[].fix` | 可选 | 修复方式，见 §4 |
 
 ---
