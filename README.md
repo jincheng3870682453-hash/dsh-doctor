@@ -65,6 +65,16 @@ plugin_manager install_bundle  target: <repo>/plugin
 | 会话正把桌面当工作区（整桌闪烁） | 提示，修复走上一项 |
 | 桌面端崩溃日志 | 只报告 |
 
+### 社区检查包（协议 v1）
+
+检查包是**纯 JSON 数据**，放进 `%USERPROFILE%\.dsh\dsh-doctor\checks\` 就生效，不用改引擎、不用重启：
+
+- 协议说明：[docs/protocol.md](docs/protocol.md)
+- JSON Schema：[protocol/check-pack.schema.json](protocol/check-pack.schema.json)
+- 示例：[examples/checks/example-pack.json](examples/checks/example-pack.json)
+
+能用的检测原语：`workspace-risky-path`、`desktop-low-label`、`profile-host-duplicate`、`desktop-session-activity`、`crash-logs`、`acl`、`file-regex`、`dir-contains`；修复只允许内置的几个（`desktop-label` / `workspace-entry` / `profile-host-dup`），**没有 shell 通道**。
+
 ---
 
 ## 快速开始
