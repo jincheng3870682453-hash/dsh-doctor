@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jincheng3870682453-hash/dsh-doctor/protocol/check-pack.schema.json",
+  "title": "dsh-doctor check pack",
+  "description": "A declarative check pack for the DSH Doctor plugin. Detection is read-only; fixes are limited to the built-in primitive list.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["protocolVersion", "id", "title", "checks"],
+  "properties": {
+    "protocolVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "title", "severity", "detect"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9:._-]{1,80}$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "severity": { "enum": ["high", "medium", "low"] },
+        "detail": { "type": "string", "maxLength": 2000 },
+        "detect": { "$ref": "#/$defs/detect" },
+        "fix": { "$ref": "#/$defs/fix" }
+      }
+    },
+    "detect": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "workspace-risky-path",
+            "desktop-low-label",
+            "profile-host-duplicate",
+            "desktop-session-activity",
+            "crash-logs",
+            "session-legacy-kind",
+            "credentials-version",
+            "patch-layer-missing",
+            "path-dead-dsh",
+            "acl",
+            "file-regex",
+            "dir-contains"
+          ]
+        },
+        "path": { "type": "string" },
+        "test": { "enum": ["low-label", "everyone-deny"] },
+        "pattern": { "type": "string", "maxLength": 400 },
+        "maxFiles": { "type": "integer", "minimum": 1, "maximum": 2000 },
+        "names": { "type": "array", "items": { "type": "string" }, "maxItems": 50 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["acl", "file-regex", "dir-contains"] } }, "required": ["type"] },
+          "then": { "required": ["path"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "acl" } }, "required": ["type"] },
+          "then": { "required": ["test"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "file-regex" } }, "required": ["type"] },
+          "then": { "required": ["pattern"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "dir-contains" } }, "required": ["type"] },
+          "then": { "required": ["names"] }
+        }
+      ]
+    },
+    "fix": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup", "restore-patch-layer"] }
+      }
+    }
+  }
+}

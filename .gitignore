@@ -1,0 +1,10 @@
+# backups / reports produced by dsh-doctor
+dsh-doctor-report-*/
+*.bak
+*.bak-*
+
+# editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
