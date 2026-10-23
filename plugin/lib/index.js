@@ -13,6 +13,10 @@ import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSy
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import * as zlib from 'node:zlib'
+
+const zstdDecompress = typeof zlib.zstdDecompressSync === 'function' ? zlib.zstdDecompressSync : null
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 
 const PREFIX = '/dsh-doctor'
 const CRITICAL_HOST_PACKAGES = ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis']
@@ -245,6 +249,133 @@ function checkCrashLogs() {
 	return findings
 }
 
+/* ── 会话 / credentials / patch 层 / PATH ───────────────────────────── */
+
+function decodeZstdFile(path) {
+	if (zstdDecompress === null) return null
+	let buffer = null
+	try { buffer = readFileSync(path) } catch (error) { return null }
+	try { return zstdDecompress(buffer).toString('utf8') } catch (error) { /* 试试逐帧解 */ }
+	const parts = []
+	let start = buffer.indexOf(ZSTD_MAGIC)
+	while (start >= 0) {
+		const next = buffer.indexOf(ZSTD_MAGIC, start + 4)
+		const end = next < 0 ? buffer.length : next
+		try { parts.push(zstdDecompress(buffer.subarray(start, end)).toString('utf8')) } catch (error) { /* 跳过坏帧 */ }
+		start = next
+	}
+	return parts.length === 0 ? null : parts.join('\n')
+}
+
+/** 扫会话文件里 v4 拒收的旧写法；只读，不改写（改写风险高，留给人工）。 */
+function checkLegacySessions() {
+	const findings = []
+	if (zstdDecompress === null) return findings
+	const root = join(dshHome(), 'sessions')
+	if (!existsSync(root)) return findings
+	const pattern = /"kind"\s*:\s*"plugin"/
+	const limit = 80
+	let scanned = 0
+	for (const name of readDirNames(root)) {
+		if (scanned >= limit) break
+		const sessionDir = join(root, name)
+		let files = []
+		try { files = readdirSync(sessionDir).filter(file => file.endsWith('.jsonl.zstd')) } catch (error) { continue }
+		for (const file of files) {
+			if (scanned >= limit) break
+			const full = join(sessionDir, file)
+			let size = 0
+			try { size = statSync(full).size } catch (error) { continue }
+			if (size > 8 * 1024 * 1024) continue
+			scanned += 1
+			const text = decodeZstdFile(full)
+			if (text === null) continue
+			if (!pattern.test(text)) continue
+			findings.push(finding('session-legacy-kind', 'high',
+				'老会话里有 v4 拒收的 source.kind = "plugin" 写法',
+				'打开这个会话时迁移会失败，整轮报 "format v4 message requires a producer-owned source kind"。改写会话文件风险高，v1 只报告不自动改。',
+				full, null))
+			break
+		}
+	}
+	return findings
+}
+
+function checkCredentials() {
+	const findings = []
+	const candidates = [
+		join(dshHome(), '.credentials.yaml'),
+		join(dshHome(), '.credentials.yml'),
+	]
+	for (const file of candidates) {
+		if (!existsSync(file)) continue
+		let head = ''
+		try { head = readFileSync(file, 'utf8').slice(0, 4000) } catch (error) { continue }
+		const match = head.match(/^\s*version\s*:\s*['"]?([\w.-]+)['"]?\s*$/m)
+		if (match === null) {
+			findings.push(finding('credentials-no-version', 'medium',
+				'credentials 文件缺少 version 字段',
+				'host 启动时按 version 选择解析器；缺字段可能直接起不来。文件：' + file,
+				file, null))
+		} else if (match[1] !== '1') {
+			findings.push(finding('credentials-version', 'low',
+				'credentials 版本是 ' + match[1] + '（本机已知可用是 1）',
+				'版本不符时 host 可能报 "declares version ... ; this build reads version 1"。',
+				file, null))
+		}
+	}
+	return findings
+}
+
+function patchBackupNames(profileDir) {
+	try {
+		return readdirSync(profileDir)
+			.filter(name => name.startsWith('cordis.patch.yml.bak'))
+			.sort()
+			.reverse()
+	} catch (error) {
+		return []
+	}
+}
+
+/** 崩溃自修复会把 cordis.patch.yml 清空；有备份就说明确实丢过。 */
+function checkPatchLayer() {
+	const findings = []
+	const profilesRoot = join(dshHome(), 'profiles')
+	if (!existsSync(profilesRoot)) return findings
+	for (const name of readDirNames(profilesRoot)) {
+		if (name.includes('.stale')) continue
+		const dir = join(profilesRoot, name)
+		const backups = patchBackupNames(dir)
+		if (backups.length === 0) continue
+		const patchFile = join(dir, 'cordis.patch.yml')
+		let size = -1
+		try { size = statSync(patchFile).size } catch (error) { size = -1 }
+		if (size > 2) continue
+		findings.push(finding('patch-layer-missing', 'high',
+			'profile "' + name + '" 的 cordis.patch.yml 是空的或不存在，但有备份',
+			'DSH 崩溃自修复会清空 patch 层（主题、模型 provider、MCP 配置全都没了）。可以从最近一份备份恢复，恢复前会先备份当前状态。',
+			patchFile, 'restore-patch-layer'))
+	}
+	return findings
+}
+
+/** PATH 里指向不存在文件的 dsh 命令，是"命令莫名其妙不工作"的常见根。 */
+function checkPathVariable() {
+	const findings = []
+	if (process.platform !== 'win32') return findings
+	const where = powershell('where.exe dsh')
+	if (!where.ok || where.out.length === 0) return findings
+	const lines = where.out.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
+	const dead = lines.filter(line => !existsSync(line))
+	if (dead.length === 0) return findings
+	findings.push(finding('path-dead-dsh', 'medium',
+		'PATH 里有指向不存在文件的 dsh 命令',
+		'这些条目会让人以为"dsh 没装/版本不对"。删掉或修掉 PATH 里对应目录即可：' + dead.join(' | '),
+		'', null))
+	return findings
+}
+
 /* ── 社区检查包（协议 v1）──────────────────────────────────────────── */
 
 const PACK_DIR = () => join(dshHome(), 'dsh-doctor', 'checks')
@@ -292,6 +423,10 @@ const DETECTORS = {
 	'profile-host-duplicate': () => checkProfileHostDuplicates(),
 	'desktop-session-activity': () => checkDesktopSessions(),
 	'crash-logs': () => checkCrashLogs(),
+	'session-legacy-kind': () => checkLegacySessions(),
+	'credentials-version': () => checkCredentials(),
+	'patch-layer-missing': () => checkPatchLayer(),
+	'path-dead-dsh': () => checkPathVariable(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -382,7 +517,17 @@ function loadCheckPacks() {
 /* ── 汇总 ───────────────────────────────────────────────────────────── */
 
 function scan() {
-	const builtin = [checkDesktopAcl, checkWorkspaces, checkDesktopSessions, checkProfileHostDuplicates, checkCrashLogs]
+	const builtin = [
+		checkDesktopAcl,
+		checkWorkspaces,
+		checkDesktopSessions,
+		checkProfileHostDuplicates,
+		checkCrashLogs,
+		checkLegacySessions,
+		checkCredentials,
+		checkPatchLayer,
+		checkPathVariable,
+	]
 	const findings = []
 	for (const check of builtin) {
 		try { for (const item of check()) findings.push(item) } catch (error) {
@@ -533,10 +678,40 @@ function fixProfileHostDup() {
 	}
 }
 
+function fixRestorePatchLayer() {
+	const profilesRoot = join(dshHome(), 'profiles')
+	if (!existsSync(profilesRoot)) return { ok: false, message: '找不到 profiles 目录：' + profilesRoot }
+	const restored = []
+	for (const name of readDirNames(profilesRoot)) {
+		if (name.includes('.stale')) continue
+		const dir = join(profilesRoot, name)
+		const backups = patchBackupNames(dir)
+		if (backups.length === 0) continue
+		const patchFile = join(dir, 'cordis.patch.yml')
+		let size = -1
+		try { size = statSync(patchFile).size } catch (error) { size = -1 }
+		if (size > 2) continue
+		try {
+			if (existsSync(patchFile)) copyFileSync(patchFile, patchFile + '.empty-' + Date.now())
+			copyFileSync(join(dir, backups[0]), patchFile)
+			restored.push(name + ' <- ' + backups[0])
+		} catch (error) {
+			return { ok: false, message: '恢复失败（' + name + '）：' + String(error && error.message ? error.message : error) }
+		}
+	}
+	if (restored.length === 0) return { ok: true, unchanged: true, message: '没有需要恢复的 patch 层。' }
+	return {
+		ok: true,
+		verified: true,
+		message: '已恢复 ' + restored.length + ' 个 profile 的 cordis.patch.yml：' + restored.join('、') + '。重启桌面端生效。',
+	}
+}
+
 const FIXES = {
 	'desktop-label': fixDesktopLabel,
 	'workspace-entry': fixWorkspaceEntries,
 	'profile-host-dup': fixProfileHostDup,
+	'restore-patch-layer': fixRestorePatchLayer,
 }
 
 /* ── HTTP 路由 ──────────────────────────────────────────────────────── */

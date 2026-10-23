@@ -61,6 +61,10 @@
 | `profile-host-duplicate` | — | profile 里有没有宿主包副本 |
 | `desktop-session-activity` | — | 有没有会话把桌面当工作区（闪烁的根源） |
 | `crash-logs` | — | 崩溃日志数量与最近时间 |
+| `session-legacy-kind` | — | 会话文件里有没有 v4 拒收的 `kind:"plugin"` 旧写法（只读） |
+| `credentials-version` | — | credentials 文件版本是否缺失/不符 |
+| `patch-layer-missing` | — | `cordis.patch.yml` 是否被崩溃自修复清空（有备份才算） |
+| `path-dead-dsh` | — | PATH 里有没有指向不存在文件的 `dsh` 命令 |
 | `acl` | `path`、`test`（`low-label` / `everyone-deny`） | 任意目录的 ACL 判定 |
 | `file-regex` | `path`、`pattern`、`maxFiles`（≤2000，默认 400） | 在目录里递归找匹配的文件 |
 | `dir-contains` | `path`、`names[]` | 目录里是否包含指定子目录名 |
@@ -78,6 +82,7 @@
 | `desktop-label` | 桌面完整性标签改回 Medium + 摘掉 Everyone 拒绝项（有备份） |
 | `workspace-entry` | 把危险工作区从注册表移除（优先走 DSH 服务，会话文件保留） |
 | `profile-host-dup` | 把 profile 里的宿主包副本改名隔离（可还原） |
+| `restore-patch-layer` | 从最近备份恢复被清空的 `cordis.patch.yml`（先备份当前状态） |
 | （省略 `fix`） | 只报告，不提供修复按钮 |
 
 **没有 shell、没有任意命令、没有注册表任意写**——这是安全边界，不接受例外的 PR。

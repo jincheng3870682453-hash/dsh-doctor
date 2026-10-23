@@ -1,0 +1,17 @@
+# Changelog
+
+## v0.2.0 — 2026-10-23
+
+- **工作区修复重做**：优先调用 DSH 自己的 `workspaceRegistry.delete()`，不再直接改写 `workspace.json`（旧实现按字符串删除会写出非法 JSON）；文件兜底改为结构级删除（记录 + `global.workspaceIds` 引用）。
+- **社区检查包协议 v1**：`docs/protocol.md` + JSON Schema + 示例；检查包是纯数据，放在 `%USERPROFILE%\.dsh\dsh-doctor\checks\` 即生效。
+- **新增检查**：老会话里的 `kind:"plugin"` 旧写法（zstd 解帧只读扫描）、credentials 版本、`cordis.patch.yml` 被清空、PATH 里指向死路径的 `dsh`。
+- **新增修复**：`restore-patch-layer`（从最近备份恢复 patch 层）。
+- **插件面板**：发现项标注来源（`builtin` / 检查包 id），相同问题自动去重。
+
+## v0.1.0 — 2026-10-23
+
+- 检测器：桌面完整性标签、危险工作区注册、profile 宿主包副本、会话写桌面、崩溃日志。
+- 一键修复：`desktop-label`、`workspace-entry`、`profile-host-dup`（均带备份与复检）。
+- DSH 侧边栏插件（`sidebar.panellist` + `main` 面板）与同源路由 `/dsh-doctor/status`、`/dsh-doctor/fix`。
+- PowerShell 命令行版（`scan` / `fix` / `watch` / `report`）与冒烟测试。
+- 踩雷清单 `docs/traps.md`、架构设计 `docs/design.md`。

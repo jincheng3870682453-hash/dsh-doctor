@@ -1,159 +1,164 @@
-# DSH Doctor
+# DSH Doctor · DSH 私人医生
 
-> Windows 桌面端故障诊断与修复工具箱 —— 把"桌面图标变白、插件炸会话、profile 里多一份宿主包"这些坑，变成一条命令。
+> **DSH 桌面端把你桌面图标搞白了、整桌闪了、插件把会话炸了？点一下。**
 
-一个社区维护的开源工具，用来检查并修复 **DeepSeek Harness（DSH）桌面端在 Windows 上踩过的已知坑**。默认只读，任何写操作都会先备份、再执行、最后验证，并打印回滚命令。
+[![ci](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions/workflows/ci.yml)
+![platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-2b6cb0)
+![license](https://img.shields.io/badge/license-MIT-green)
+![status](https://img.shields.io/badge/status-v0.2%20preview-orange)
 
-> ⚠️ 非官方项目。DSH 是杭州深度求索的产品；本项目只做本机状态检查与修复，不修改 DSH 的安装文件。
+一个**证据驱动**的 DSH 桌面端健康检查与修复工具：侧边栏一个「私人医生」图标，点开就体检；每条问题都带路径、证据、一个「一键修复」。默认只读，改动前备份，改完立刻复检。
+
+> ⚠️ 非官方项目。DSH 是杭州深度求索的产品；本项目只检查与修复**本机状态**，不修改 DSH 安装目录，也不代表官方立场。
 
 ---
 
 ## 为什么需要它
 
-DSH 桌面端在 Windows 上会动系统状态，而这些操作**都没有回收机制**。已经确认过的典型链路：
+DSH 桌面端在 Windows 上会改系统状态，而且**不回收**：
 
 ```
 DSH 注册工作区 = C:\Users\<你>\Desktop
-        ↓  （每次给工作区授沙箱写权限时）
-icacls：S-1-4-xxx:(OI)(CI)(W,D,DC)      ← 能力 ACE，用来放行写入
-        Everyone:(CI)(DENY)(DC)          ← 拒绝删除，从不回收
-        Mandatory Label\Low:(OI)(CI)(NW) ← ★ 元凶：桌面被降为低完整性
+        ↓  每次给工作区授沙箱写权限
+icacls 盖上三件套：
+  S-1-4-xxx:(OI)(CI)(W,D,DC)            ← 能力 ACE，放行写入
+  Everyone:(CI)(DENY)(DC)               ← 拒绝删除，永不回收
+  Mandatory Label\Low:(OI)(CI)(NW)      ← ★ 元凶：桌面被降成低完整性
         ↓
-Windows Explorer 在 Low 完整性目录里取不到图标
+Explorer 在低完整性目录里取不到图标
         ↓
-整个桌面所有快捷方式、文件夹变成白纸图标
+整个桌面的快捷方式、文件夹变成白纸
 ```
 
-修好之后**一定会复发**，因为下一次供给工作区时三件套会重新盖上。所以真正要修的是**工作区的注册位置**，而不是图标缓存——删缓存、重建图标、`ie4uinit -show`、重启电脑，全都没用。
+修好之后**必然复发**——只要这个工作区还在，下次供给就又盖一遍。所以删图标缓存、`ie4uinit -show`、重启电脑都没用；真正有效的是改标签 + 把工作区从注册表里移出去。
 
-同类问题还有：
-
-| 症状 | 根因 |
-| --- | --- |
-| `Cannot read properties of undefined (reading 'prepare')` | 同一进程里混进了第二份 `@deepseek-ai/dsh-tools`（插件把宿主包写进了 `dependencies`） |
-| `format v4 message requires a producer-owned source kind` | 插件用旧写法 `source: { kind: "plugin" }` 往会话里注入消息，v4 直接拒收 |
-| 老会话打不开、每轮都炸 | v3→v4 迁移表只收录了 5 个插件 id，老会话里有 7 个没收录 |
-| `SetNamedSecurityInfoW failed (Win32 5): grantWrite(...)` | 工作区目录的 DACL 不允许 DSH 写入能力 ACE |
-| `DesktopHostFatalError: dsh: startup failed` | profile 里的 `@deepseek-ai/*` 副本或 credentials 版本问题拖死 host |
-| 子目录写不进去 | 继承了父目录的 `Low` 标签 / 拒绝项 |
-
-完整清单见 [docs/traps.md](docs/traps.md)。整体架构、版本无关性设计与通知方案见 [docs/design.md](docs/design.md)。
+同样不讲道理的还有：插件把宿主包写进 `dependencies` 导致同一进程两份 `dsh-tools`；插件用 `kind: "plugin"` 往会话里注入消息被 v4 拒收；崩溃自修复把 `cordis.patch.yml` 清空……完整清单见 **[docs/traps.md](docs/traps.md)**（已收录 14 类）。
 
 ---
 
-## 插件版（第一版，已可用）
+## 30 秒开始
 
-它也可以作为 DSH 插件装进桌面端：侧边栏多一个「私人医生」，点开就能体检、一键修。
+### 插件版（推荐）
 
-```powershell
-# 安装（plugin_manager install_bundle，target 指向本仓库的 plugin 目录）
-plugin_manager install_bundle  target: <repo>/plugin
+在 DSH 里把本仓库的 `plugin/` 目录装成一个 bundle：
+
+```text
+plugin_manager  install_bundle  target: <本仓库路径>/plugin
 ```
 
-装好之后：
+装好后侧边栏出现「私人医生」图标：
 
-- 侧边栏出现「私人医生」图标，平时安静，只在有高危问题时亮红点；
-- 点开是体检面板：每条问题都带路径、原因、一个「一键修复」；
-- 修复走同源路由 `/dsh-doctor/fix`，只接受固定的修复 id，**没有 shell 通道**；
-- 每个修复先备份、改完立刻复检，失败如实报错。
+- **平时完全无感**：没有弹窗、没有托盘、没有常驻进程；
+- 只在有高危问题时亮红点；
+- 点开就是体检面板，一条一条点「一键修复」。
 
-| 检查 | 能一键修 |
-| --- | --- |
-| 桌面被打 Low 完整性标签（图标变白） | ✅ |
-| 工作区注册到桌面 / 用户目录 / 盘根（复发根源） | ✅ |
-| profile 里出现宿主包副本（`reading 'prepare'`） | ✅ |
-| 会话正把桌面当工作区（整桌闪烁） | 提示，修复走上一项 |
-| 桌面端崩溃日志 | 只报告 |
+### 命令行版
 
-### 社区检查包（协议 v1）
+```powershell
+.\dsh-doctor.cmd scan                     # 只读体检
+.\dsh-doctor.cmd fix -Id desktop-label    # 修桌面图标变白
+.\dsh-doctor.cmd report                   # 生成可提交给官方的报告包
+```
 
-检查包是**纯 JSON 数据**，放进 `%USERPROFILE%\.dsh\dsh-doctor\checks\` 就生效，不用改引擎、不用重启：
-
-- 协议说明：[docs/protocol.md](docs/protocol.md)
-- JSON Schema：[protocol/check-pack.schema.json](protocol/check-pack.schema.json)
-- 示例：[examples/checks/example-pack.json](examples/checks/example-pack.json)
-
-能用的检测原语：`workspace-risky-path`、`desktop-low-label`、`profile-host-duplicate`、`desktop-session-activity`、`crash-logs`、`acl`、`file-regex`、`dir-contains`；修复只允许内置的几个（`desktop-label` / `workspace-entry` / `profile-host-dup`），**没有 shell 通道**。
+要求：Windows 10/11 + PowerShell 5.1（系统自带），无第三方依赖。
 
 ---
 
-## 快速开始
+## 能修什么
 
-要求：Windows 10 / 11，PowerShell 5.1（系统自带）即可，无第三方依赖。
-
-```powershell
-git clone https://github.com/<your-name>/dsh-doctor.git
-cd dsh-doctor
-
-.\dsh-doctor.cmd scan            # 只读体检：列出所有发现，附证据
-.\dsh-doctor.cmd fix -Id desktop-label     # 修桌面图标变白
-.\dsh-doctor.cmd report          # 生成可提交给官方的 bug 报告包
-```
-
-`scan` 默认**不改任何东西**，只输出 `[High] / [Medium] / [Info]` 三级发现，每条都带：路径、证据（SDDL / 文件路径 / 行号）、对应修复命令。
-
-### 修复项
-
-| `-Id` | 作用 | 风险 |
+| 检查 | 现象 | 一键修 |
 | --- | --- | --- |
-| `desktop-label` | 把桌面完整性标签改回 `Medium`，摘掉 `Everyone` 拒绝项（**保留** 能力 ACE，不破坏写入） | 低，自动备份 ACL |
-| `workspace-entry` | 从 `~/.dsh/storages/workspace.json` 移除"桌面 / 用户目录 / 盘根"这类危险工作区（断根，防复发） | 中，改前备份，JSON 校验通过才落盘 |
-| `profile-host-dup` | 把 profile 里多出来的第二份 `@deepseek-ai/*` 重命名隔离（`.stale-<时间戳>`） | 中，可改名还原 |
+| 桌面 Low 完整性标签 | 图标全变白纸 | ✅ |
+| 工作区注册在桌面 / 用户目录 / 盘根 | 白图标反复复发 | ✅（走 DSH 自己的注册表服务，不被覆盖） |
+| profile 里出现宿主包副本 | `reading 'prepare'` 崩溃 | ✅（改名隔离，可还原） |
+| `cordis.patch.yml` 被崩溃自修复清空 | 主题/模型/provider/MCP 全没了 | ✅（从最近备份恢复） |
+| 会话把桌面当工作区 | 整桌图标一起闪 | 提示（根因修上面第二项） |
+| 老会话含 v4 拒收的 `kind:"plugin"` | 会话打不开、每轮报错 | 只报告（改写会话风险高） |
+| credentials 版本缺失 / 不符 | host 起不来 | 只报告 |
+| PATH 里 `dsh` 指向死路径 | "命令莫名其妙不工作" | 只报告 |
+| 桌面端崩溃日志 | 定位历史事故 | 只报告 |
 
-```powershell
-.\dsh-doctor.cmd fix -Id desktop-label -RestartExplorer   # 修完顺带重启资源管理器
-.\dsh-doctor.cmd fix -Id workspace-entry                  # 交互确认后删危险工作区
-.\dsh-doctor.cmd fix -Id profile-host-dup -Yes            # 不问，直接隔离
+---
+
+## 社区检查包协议 v1
+
+**你踩到的新坑，不用改引擎——写一个 JSON 就行。**
+
+检查包放在 `%USERPROFILE%\.dsh\dsh-doctor\checks\*.json`，下一次体检自动加载：
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "my-pack",
+  "title": "我自己踩过的坑",
+  "checks": [
+    {
+      "id": "my-pack:workspace-on-desktop",
+      "title": "工作区注册到了桌面",
+      "severity": "high",
+      "detail": "每次授沙箱权限都会把桌面降成低完整性。",
+      "detect": { "type": "workspace-risky-path" },
+      "fix": { "type": "workspace-entry" }
+    }
+  ]
+}
 ```
 
----
+- 协议与提交流程：[docs/protocol.md](docs/protocol.md)
+- JSON Schema（编辑器可直接校验）：[protocol/check-pack.schema.json](protocol/check-pack.schema.json)
+- 可复制示例：[examples/checks/example-pack.json](examples/checks/example-pack.json)
 
-## 检查项（v0.1）
-
-| 检查 | 看什么 |
-| --- | --- |
-| 桌面完整性 | 桌面 SDDL 里是否有 `S:(ML;;NW;;;LW)`（Low 标签）、`Everyone` 拒绝项、能力 ACE |
-| 工作区注册 | `~/.dsh/storages/workspace.json` 里是否注册了 Desktop / 用户目录 / Documents / Downloads / 盘根 |
-| profile 宿主包 | `~/.dsh/profiles/*/node_modules/@deepseek-ai` 是否是真目录（而非链接）—— 一份就是 `reading 'prepare'` |
-| 插件清单 | 已安装插件的 `package.json` 是否把 `@deepseek-ai/*`、`schemastery` 写进 `dependencies` |
-| 插件源码 | `node_modules` 里是否还有 `kind: "plugin"` 这种 v4 已废弃的注入写法 |
-| 崩溃日志 | `%APPDATA%\@deepseek-ai\dsh-desktop\logs\crash-*.log` 最近 10 条 |
-
-`scan -Json` 输出机器可读结果，方便接进 CI 或别的工具。
+可用检测原语：`workspace-risky-path`、`desktop-low-label`、`profile-host-duplicate`、`desktop-session-activity`、`crash-logs`、`session-legacy-kind`、`credentials-version`、`patch-layer-missing`、`path-dead-dsh`、`acl`、`file-regex`、`dir-contains`。
+可用修复动作：`desktop-label`、`workspace-entry`、`profile-host-dup`、`restore-patch-layer`。
 
 ---
 
-## 安全性设计
+## 安全设计
 
-1. **默认只读**：`scan` / `report` 不写任何东西。
-2. **每个修复都三步**：备份 → 最小改动 → 立刻验证。验证失败就报错，不返回"成功"。
-3. **打印回滚命令**：ACL 修改会先 `icacls /save`，回滚命令直接复制就能用。
-4. **不做常驻服务**、不注册计划任务、不碰注册表、不改 DSH 安装目录。
-5. **不确定就降级**：读不到权限、路径不存在、命令失败 → 记为 `Info` 或 `Medium` 并说明，不猜测。
+1. **默认只读**：体检与报告不写任何东西。
+2. **每个修复三步**：备份 → 最小改动 → 立刻复检；复检失败就报错并还原，不返回"成功"。
+3. **没有 shell 通道**：检查包只能声明「检测原语 + 内置修复 id」，不能执行任意命令、不能发明新动作。
+4. **不碰安装目录**：不改 `app.asar`、不写 DSH 安装路径、不注册服务/驱动。
+5. **改动可回滚**：ACL 有 `icacls /save` 备份，注册表有 `.bak-<时间戳>`，隔离的目录改回名字即可。
 
 ---
 
-## 已知边界 / Roadmap
+## 常见问题
 
-当前版本是 **PowerShell 单文件原型**，用来验证检测逻辑是否站得住；它不是最终形态。
+**会不会把我桌面搞得更坏？**
+不会。改桌面前的每一步都有备份，验证失败会还原。已经在你机器上跑过的真实案例：桌面标签改回 Medium、桌面工作区移出注册表、崩溃日志归档。
 
-正式形态（见 [docs/design.md](docs/design.md)）：
+**为什么不用 C++？**
+底层用 Rust（规划中）+ 编排用 TS。Rust 的所有权检查能在编译期挡住 C++ 那类内存问题；C++ 若要写，只在虚拟机/云端编译运行，本机最多跑冒烟。
 
-- **doctor-sys.exe**（Rust，静态单文件、无运行时依赖）：只做系统原语——安全描述符、完整性标签、注册表、进程、端口、原生通知；
-- **core**（TS，零依赖）：检测器 / 修复器 / 快照 / 归因 / 探针；
-- **四张脸**：CLI（`.cmd`）、MCP（可选，给 AI 自己调）、DSH 侧边栏面板、常驻守护进程；
-- **常驻守护**：DSH 瘫痪时由 DSH 之外的进程弹 Windows 原生提示——写在 DSH 里的东西跟着一起死，救不了 DSH；
-- **升级拦截器**：升级前快照、升级后真启动验证、失败一键回滚（回滚是快照还原，不是降版本）。
+**能修显卡 / 驱动 / HDR 那种花屏吗？**
+不能，也不假装能。那类问题会明确标成"不是 DSH 的问题"，只给线索。
 
-v0.1 不做会话文件（逐帧 zstd）的自动修复——只报告"插件源码里有旧写法"。
+**数据会上传吗？**
+不会。全部本地运行，没有遥测；`report` 生成的文件要不要提交由你决定。
 
-- 跨机器验证尚未做：v0.1 只在本机（Windows 11 / PowerShell 5.1 / DSH 0.2.0-rc.2）验证过。
+**怎么卸载？**
+设置 → 插件里停用，或 `plugin_manager remove_bundle target: dsh-doctor`。命令行版删掉目录即可。
+
+---
+
+## 路线图
+
+- [x] v0.1 检测器 + 一键修复 + 侧边栏面板
+- [x] v0.2 工作区修复走 DSH 服务、社区检查包协议 v1、崩溃自修复恢复
+- [ ] v0.3 常驻守护：DSH 瘫痪时由外部进程弹 Windows 原生通知（写在 DSH 里的东西救不了 DSH）
+- [ ] v0.4 网页版逃生：一键起隔离 profile 的 web 端，随机高位端口 + 自动开浏览器
+- [ ] v0.5 MCP 面：让任何 agent 通过工具调用体检与修复（只读默认，写操作需显式确认）
+
+设计细节见 **[docs/design.md](docs/design.md)**。
 
 ---
 
 ## 贡献
 
-欢迎提 Issue 带上 `dsh-doctor report` 生成的报告包（会脱敏路径吗？**不会**，提交前自己看一眼）。新增检查请遵循：只读、可解释、带证据、失败不抛异常。
+- 新坑：按 [协议](docs/protocol.md) 写一个 JSON 检查包，提 PR 到 `examples/checks/`，并在 `docs/traps.md` 补一条现象与根因；
+- 代码：保持"只读优先、可回滚、失败不抛"的三条纪律；
+- 报告：`dsh-doctor report` 会生成脱不了敏的报告包，提交前自己看一眼。
 
 ## License
 

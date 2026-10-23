@@ -42,6 +42,10 @@
             "profile-host-duplicate",
             "desktop-session-activity",
             "crash-logs",
+            "session-legacy-kind",
+            "credentials-version",
+            "patch-layer-missing",
+            "path-dead-dsh",
             "acl",
             "file-regex",
             "dir-contains"
@@ -76,7 +80,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup"] }
+        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup", "restore-patch-layer"] }
       }
     }
   }
