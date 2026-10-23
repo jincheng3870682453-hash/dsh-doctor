@@ -1,0 +1,77 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: build · Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dsh-doctor.exe
+        shell: pwsh
+        run: ./tools/build.ps1
+      - name: Run the built EXE
+        shell: pwsh
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:DSH_HOME | Out-Null
+          ./dist/release/dsh-doctor.exe scan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-windows
+          path: dist/release/dsh-doctor.exe
+
+  unix:
+    name: build · Unix tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build dsh-doctor-unix.tar.gz
+        shell: bash
+        run: bash tools/package-unix.sh
+      - name: Run the packaged CLI from the tarball
+        shell: bash
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          set -euo pipefail
+          mkdir -p "$DSH_HOME" "$RUNNER_TEMP/unpack"
+          tar -xzf dist/release/dsh-doctor-unix.tar.gz -C "$RUNNER_TEMP/unpack"
+          sh "$RUNNER_TEMP/unpack/dsh-doctor.sh" scan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-unix
+          path: dist/release/dsh-doctor-unix.tar.gz
+
+  release:
+    name: publish · GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, unix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+      - name: List assets
+        run: ls -la dist/release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/dsh-doctor.exe
+            dist/release/dsh-doctor-unix.tar.gz
+          fail_on_unmatched_files: false
