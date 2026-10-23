@@ -17,39 +17,62 @@ window.__ModuleLoader__.load({
 		const h = React.createElement
 
 		const CSS = `
-.dshdr-root{display:flex;flex-direction:column;gap:14px;padding:20px 24px;height:100%;box-sizing:border-box;
+.dshdr-root{display:flex;flex-direction:column;gap:16px;padding:24px 28px 28px;height:100%;box-sizing:border-box;
   overflow:auto;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;
   background:var(--dsw-alias-bg-base)}
-.dshdr-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.dshdr-title{font-size:17px;line-height:24px;font-weight:600}
-.dshdr-sub{color:var(--dsw-alias-label-tertiary);font-size:12px}
-.dshdr-actions{margin-left:auto;display:flex;gap:8px}
-.dshdr-btn{height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);
-  background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer}
-.dshdr-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dshdr-btn:disabled{opacity:.5;cursor:default}
+.dshdr-hero{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dshdr-mark{flex:0 0 auto;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4D6BFE) 15%,transparent);
+  color:var(--dsw-alias-brand-primary,#4D6BFE)}
+.dshdr-hero-text{display:flex;flex-direction:column;gap:1px;min-width:0}
+.dshdr-title{font-size:17px;line-height:22px;font-weight:650;letter-spacing:.01em}
+.dshdr-slogan{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px}
+.dshdr-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dshdr-btn{height:30px;padding:0 12px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);
+  background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;cursor:pointer;
+  transition:background 120ms ease,border-color 120ms ease,color 120ms ease}
+.dshdr-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshdr-btn:disabled{opacity:.45;cursor:default}
 .dshdr-btn-primary{border-color:transparent;background:var(--dsw-alias-label-primary);
-  color:var(--dsw-alias-label-primary-foreground)}
-.dshdr-card{border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:14px 16px;
-  display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-base)}
-.dshdr-card-high{border-color:var(--dsw-alias-state-error-primary)}
-.dshdr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dshdr-chip{font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:999px;
+  color:var(--dsw-alias-label-primary-foreground);font-weight:600}
+.dshdr-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dshdr-stat{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;
+  border:1px solid var(--dsw-alias-border-l1);font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dshdr-stat b{font-weight:650}
+.dshdr-stat-high{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);
+  color:var(--dsw-alias-state-error-primary)}
+.dshdr-stat-medium{border-color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#d97706) 45%,transparent);
+  color:var(--dsw-alias-state-warning-primary,#d97706)}
+.dshdr-stat-ok{color:var(--dsw-alias-state-success-primary,#15803d)}
+.dshdr-card{position:relative;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;
+  padding:16px 18px 14px 22px;display:flex;flex-direction:column;gap:8px;
+  background:var(--dsw-alias-bg-base);transition:border-color 120ms ease}
+.dshdr-card::before{content:'';position:absolute;left:8px;top:15px;bottom:15px;width:3px;border-radius:999px;
+  background:var(--dsw-alias-border-l2)}
+.dshdr-card-high::before{background:var(--dsw-alias-state-error-primary)}
+.dshdr-card-medium::before{background:var(--dsw-alias-state-warning-primary,#d97706)}
+.dshdr-card:hover{border-color:var(--dsw-alias-border-l2)}
+.dshdr-card-head{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.dshdr-chip{flex:0 0 auto;font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:999px;
   border:1px solid currentColor}
 .dshdr-high{color:var(--dsw-alias-state-error-primary)}
 .dshdr-medium{color:var(--dsw-alias-state-warning-primary,#d97706)}
 .dshdr-low{color:var(--dsw-alias-label-tertiary)}
-.dshdr-name{font-weight:600;font-size:14px}
-.dshdr-detail{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
-.dshdr-path{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-tertiary);
-  word-break:break-all}
-.dshdr-ok{color:var(--dsw-alias-state-success-primary,#15803d);font-weight:600}
-.dshdr-empty{padding:28px;text-align:center;color:var(--dsw-alias-label-tertiary);
-  border:1px dashed var(--dsw-alias-border-l2);border-radius:12px}
-.dshdr-msg{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;white-space:pre-line;
-  background:var(--dsw-alias-interactive-bg-hover)}
-.dshdr-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;
-  border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}
+.dshdr-name{font-weight:600;font-size:14px;line-height:22px;min-width:0}
+.dshdr-detail{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:19px}
+.dshdr-path{font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:17px;
+  color:var(--dsw-alias-label-tertiary);word-break:break-all;
+  background:var(--dsw-alias-interactive-bg-hover);border-radius:8px;padding:6px 9px}
+.dshdr-fixrow{display:flex;justify-content:flex-end;margin-top:2px}
+.dshdr-ok{color:var(--dsw-alias-state-success-primary,#15803d);font-weight:650;font-size:14px}
+.dshdr-empty{padding:44px 24px;text-align:center;color:var(--dsw-alias-label-tertiary);
+  border:1px dashed var(--dsw-alias-border-l2);border-radius:14px;
+  display:flex;flex-direction:column;gap:6px;align-items:center}
+.dshdr-hr{display:flex;align-items:center;gap:10px;color:var(--dsw-alias-label-tertiary);font-size:11px;
+  letter-spacing:.02em}
+.dshdr-hr::after{content:'';flex:1;height:1px;background:var(--dsw-alias-border-l1)}
+.dshdr-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:17px;
+  border-top:1px solid var(--dsw-alias-border-l1);padding-top:12px;display:flex;flex-direction:column;gap:3px}
 .dshdr-err{color:var(--dsw-alias-state-error-primary);font-size:12px}
 /* 结果提示放在面板内容流里（不是浮层）：不盖窗口控件，也不盖面板按钮。 */
 .dshdr-toast{display:block;width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;
@@ -194,6 +217,16 @@ window.__ModuleLoader__.load({
 			}
 		}
 
+		/** 面板标题里的小图标（静态，不联网）。 */
+		function DoctorMark(props) {
+			const size = props !== null && props !== undefined && typeof props.size === 'number' ? props.size : 20
+			return h('svg', { width: size, height: size, viewBox: '0 0 24 24', 'aria-hidden': true },
+				h('circle', { cx: 12, cy: 10.4, r: 6.2, fill: 'none', stroke: 'currentColor', strokeWidth: 1.9 }),
+				h('path', { d: 'M12 10.4v4.3', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' }),
+				h('path', { d: 'M8.3 18.6h7.4', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' }),
+			)
+		}
+
 		/** 主面板。 */
 		function Panel() {
 			ensureStyle()
@@ -307,6 +340,18 @@ window.__ModuleLoader__.load({
 					h('div', null, h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh }, '重试')),
 				)
 			}
+			if (status === null) {
+				return h('div', { className: 'dshdr-root' },
+					h('div', { className: 'dshdr-hero' },
+						h('div', { className: 'dshdr-mark' }, h(DoctorMark, { size: 20 })),
+						h('div', { className: 'dshdr-hero-text' },
+							h('div', { className: 'dshdr-title' }, 'DSH 私人医生'),
+							h('div', { className: 'dshdr-slogan' }, '点一下修复。'),
+						),
+					),
+					h('div', { className: 'dshdr-empty' }, '正在体检…'),
+				)
+			}
 
 			const all = status !== null && Array.isArray(status.findings) ? status.findings : []
 			const findings = all.slice().sort((left, right) => severityRank(left.severity) - severityRank(right.severity))
@@ -314,17 +359,56 @@ window.__ModuleLoader__.load({
 			const medium = findings.filter(item => item.severity === 'medium').length
 			const env = status !== null && status.environment !== undefined ? status.environment : null
 
+			const stats = []
+			if (high > 0) stats.push(h('span', { key: 'stat-high', className: 'dshdr-stat dshdr-stat-high' },
+				h('b', null, String(high)), ' 个高危'))
+			if (medium > 0) stats.push(h('span', { key: 'stat-medium', className: 'dshdr-stat dshdr-stat-medium' },
+				h('b', null, String(medium)), ' 条提醒'))
+			if (high === 0 && medium === 0) stats.push(h('span', { key: 'stat-ok', className: 'dshdr-stat dshdr-stat-ok' }, '一切正常'))
+
+			const cards = findings.map((item, index) => h('div', {
+				key: String(item.id) + '-' + index,
+				className: 'dshdr-card'
+					+ (item.severity === 'high' ? ' dshdr-card-high' : '')
+					+ (item.severity === 'medium' ? ' dshdr-card-medium' : ''),
+			},
+				h('div', { className: 'dshdr-card-head' },
+					h('span', { className: severityClass(item.severity) }, severityText(item.severity)),
+					h('span', { className: 'dshdr-name' }, String(item.title)),
+				),
+				item.detail !== undefined && item.detail !== null && String(item.detail).length > 0
+					? h('div', { className: 'dshdr-detail' }, String(item.detail))
+					: null,
+				item.path !== undefined && item.path !== null && String(item.path).length > 0
+					? h('div', { className: 'dshdr-path' }, String(item.path))
+					: null,
+				item.fixId !== undefined && item.fixId !== null
+					? h('div', { className: 'dshdr-fixrow' },
+						h('button', {
+							type: 'button',
+							className: 'dshdr-btn dshdr-btn-primary',
+							disabled: pending !== null,
+							onClick: () => onFix(item.fixId, item.title),
+						}, pending === item.fixId ? '修复中…' : '一键修复'),
+					)
+					: null,
+			))
+
 			return h('div', { className: 'dshdr-root' },
-				h('div', { className: 'dshdr-head' },
-					h('span', { className: 'dshdr-title' }, 'DSH 私人医生'),
-					h('span', { className: 'dshdr-sub' },
-						status === null ? '正在体检…' : high > 0 ? high + ' 个高危问题' : medium > 0 ? medium + ' 个提醒' : '一切正常'),
+				h('div', { className: 'dshdr-hero' },
+					h('div', { className: 'dshdr-mark' }, h(DoctorMark, { size: 20 })),
+					h('div', { className: 'dshdr-hero-text' },
+						h('div', { className: 'dshdr-title' }, 'DSH 私人医生'),
+						h('div', { className: 'dshdr-slogan' }, '点一下修复。'),
+					),
 					h('div', { className: 'dshdr-actions' },
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onTestNotify }, '测试通知'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: onRescue, disabled: rescuing }, rescuing ? '启动中…' : '起网页版'),
 						h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '检查中…' : '重新体检'),
 					),
 				),
+
+				h('div', { className: 'dshdr-summary' }, stats),
 
 				toast !== null
 					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
@@ -333,40 +417,19 @@ window.__ModuleLoader__.load({
 				findings.length === 0 && status !== null
 					? h('div', { className: 'dshdr-empty' },
 						h('div', { className: 'dshdr-ok' }, '没有发现问题'),
-						h('div', null, '桌面 ACL、工作区注册、profile 宿主包、会话、崩溃日志都正常。'))
-					: findings.map((item, index) => h('div', {
-						key: String(item.id) + '-' + index,
-						className: item.severity === 'high' ? 'dshdr-card dshdr-card-high' : 'dshdr-card',
-					},
-						h('div', { className: 'dshdr-row' },
-							h('span', { className: severityClass(item.severity) }, severityText(item.severity)),
-							h('span', { className: 'dshdr-name' }, String(item.title)),
-						),
-						h('div', { className: 'dshdr-detail' }, String(item.detail)),
-						item.path !== undefined && item.path !== null && String(item.path).length > 0
-							? h('div', { className: 'dshdr-path' }, String(item.path))
-							: null,
-						item.fixId !== undefined && item.fixId !== null
-							? h('div', { className: 'dshdr-row' },
-								h('button', {
-									type: 'button',
-									className: 'dshdr-btn dshdr-btn-primary',
-									disabled: pending !== null,
-									onClick: () => onFix(item.fixId, item.title),
-								}, pending === item.fixId ? '修复中…' : '一键修复'),
-							)
-							: null,
-					)),
+						h('div', null, '桌面 ACL、工作区注册、profile 宿主包、会话、崩溃日志都正常。'),
+						h('div', null, '点一下修复 —— 平时它不会打扰你。'))
+					: cards,
 
 				history.length > 0
 					? h('div', { className: 'dshdr-card' },
-						h('div', { className: 'dshdr-row' },
+						h('div', { className: 'dshdr-card-head' },
 							h('span', { className: 'dshdr-name' }, '修复录'),
-							h('span', { className: 'dshdr-sub' }, '最近 ' + history.length + ' 条'),
+							h('span', { className: 'dshdr-detail' }, '最近 ' + history.length + ' 条'),
 						),
 						history.slice(0, 8).map((entry, index) => h('div', {
 							key: String(entry.at) + String(entry.id) + '-' + index,
-							className: 'dshdr-row',
+							style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
 						},
 							h('span', { className: entry.ok === true ? 'dshdr-chip dshdr-low' : 'dshdr-chip dshdr-high' }, entry.ok === true ? '成功' : '失败'),
 							h('span', { className: 'dshdr-detail' },
@@ -376,9 +439,12 @@ window.__ModuleLoader__.load({
 					: null,
 
 				h('div', { className: 'dshdr-foot' },
-					env === null ? '只在本机运行，不上传任何数据。' :
-						'DSH 目录：' + String(env.dshHome) + ' · profile：' + (Array.isArray(env.profiles) ? env.profiles.join('、') : '') +
-						' · 检查时间：' + String(env.at) + '。只修改这几类已知问题，不动安装目录。'),
+					h('div', null, env === null
+						? '只在本机运行，不上传任何数据。'
+						: 'DSH 目录：' + String(env.dshHome) + ' · 平台：' + String(env.platform || '') + ' · profile：'
+							+ (Array.isArray(env.profiles) ? env.profiles.join('、') : '')),
+					h('div', null, '只修改这几类已知问题；每次修复先备份、改完复检，不动安装目录。'),
+				),
 			)
 		}
 
