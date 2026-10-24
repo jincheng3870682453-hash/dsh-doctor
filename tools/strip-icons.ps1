@@ -1,4 +1,4 @@
-# 去掉文档与 CLI 输出里的所有图标（emoji）。
+﻿# 去掉文档与 CLI 输出里的所有图标（emoji）。
 $root = Split-Path -Parent $PSScriptRoot
 $utf8 = New-Object Text.UTF8Encoding($false)
 $emoji = [regex]'[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]'

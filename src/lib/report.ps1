@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Console rendering, JSON output and the bug-report bundle.
 
 function Show-DoctorFindings {

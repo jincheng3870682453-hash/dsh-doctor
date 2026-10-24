@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Read-only checks for dsh-doctor. Every check returns an array of findings and
 # must never throw: failures degrade into a Medium finding.
 

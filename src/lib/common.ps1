@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Shared helpers for dsh-doctor. ASCII-only source: keep messages in English here,
 # user-facing documentation lives in README.md / docs/ (UTF-8).
 

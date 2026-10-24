@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Smoke test: the module loads, findings have the expected shape, scanning and
 # JSON export work even on a machine without DSH installed.
 

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Fixes for dsh-doctor. Every fix backs up first, verifies after, and prints a
 # rollback command. Nothing runs unless the caller asked for that specific fix.
 

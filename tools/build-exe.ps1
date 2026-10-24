@@ -1,4 +1,4 @@
-# 构建自包含急救 EXE：把 PowerShell 逻辑内嵌进 .NET 启动器，输出 dist\dsh-doctor.exe。
+﻿# 构建自包含急救 EXE：把 PowerShell 逻辑内嵌进 .NET 启动器，输出 dist\dsh-doctor.exe。
 # 不需要 Node、不需要 DSH、不需要联网；只需要 Windows 自带的 .NET Framework 编译器。
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot

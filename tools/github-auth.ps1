@@ -1,4 +1,4 @@
-# Initiate GitHub device-flow authorization and store the resulting token in gh.
+﻿# Initiate GitHub device-flow authorization and store the resulting token in gh.
 # Prints the one-time code, then polls until the user approves it in a browser.
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

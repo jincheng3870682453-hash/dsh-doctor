@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # 急救箱交互菜单。由 build-exe.ps1 和其它 lib 文件拼接后内嵌进 dsh-doctor.exe。
 # 不依赖 DSH / Node / 网络；只用 Windows 自带的 PowerShell 与系统命令。
 
