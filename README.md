@@ -114,6 +114,8 @@ node dsh-doctor.mjs fix workspace-entry
 
 踩到新坑就是最好的贡献：按 [CONTRIBUTING.md](CONTRIBUTING.md) 把症状、复现步骤、现场证据写进 [bugs/](bugs/)，或者写一个 JSON 检查包丢进 `examples/checks/`。
 
+桌面端报废时也能贡献——`dsh-doctor.exe diff` 生成的报告已脱敏，直接贴进 issue 即可。
+
 ## License
 
-MIT · 非官方项目，与深度求索无关
+[MIT](LICENSE) · 贡献按 MIT 授权 · 非官方项目，与深度求索无关

@@ -18,10 +18,29 @@
 
 1. **症状**（你看到的原文，最好带截图）；
 2. **复现步骤**（做了什么之后出现的）；
-3. **现场证据**（`dsh-doctor report` 生成的内容，或关键命令输出）；
+3. **现场证据**——直接生成一份报告就行，里面已自动脱敏：
+   - 有面板：点页脚「环境差异报告」，桌面会得到 `dsh-doctor-环境差异-<时间>.md`；
+   - 桌面端已经报废：双击 `dsh-doctor.exe diff`（菜单选 `8`），不依赖 DSH / Node / 联网；
+   - 命令行：`node dsh-doctor.mjs diff`；
+   - 只要完整报错：`node dsh-doctor.mjs report`（给 AI 的求助报告）。
 4. 你已经试过什么、结果如何。
 
 这四样齐全，基本就能定位。
+
+> 报告里的用户名、主机名、邮箱、用户主目录会替换成 `user`、`<machine>`、`user@example.com`，
+> 但**非用户目录的路径会保留**（比如 `D:\项目名`）——那是定位问题所必需的。提交前自己扫一眼即可。
+
+## 桌面端报废时怎么贡献
+
+DSH 彻底起不来时，插件、面板、网页版都用不上，但 `dsh-doctor.exe` 仍然可用：
+
+```
+dsh-doctor.exe scan     # 体检，看它报了什么
+dsh-doctor.exe diff     # 生成环境差异报告（可提交）
+dsh-doctor.exe          # 双击进入菜单
+```
+
+把 `diff` 生成的 MD 贴进 issue，比"我的 DSH 坏了"有用一百倍。
 
 ## 写检查包（最简单）
 
@@ -73,7 +92,7 @@ bash tools/package-unix.sh                        # Linux/macOS 包
 ## 测试与 CI
 
 - `ci.yml`：三系统冒烟、PowerShell 冒烟、假 DSH 目录上的集成修复、30 次压力扫描；
-- `build.yml`：云端编 EXE / Unix 包 / 环境包 / 插件 zip，并对产物真跑一次 `scan`；
+- `build.yml`：云端编 EXE / Unix 包 / 环境包 / 插件 zip，并对产物真跑一次 `scan` 和 `dsh-doctor.exe diff`（校验报告结构）；
 - 打 `v*` tag 会自动创建 Release，不需要手动上传。
 
 **PR 之前请确认 CI 全绿。** 如果 CI 抓到了你的 bug，那不是坏事——它替用户先踩了。
@@ -89,9 +108,14 @@ chore: 杂项
 
 ## 安全与隐私
 
-- 报告和 issue 里可能含绝对路径、用户名，**提交前自己看一眼**；
-- 不要提交任何 token、密钥、凭据文件；
+- 报告**已自动脱敏**（用户名 / 主机名 / 邮箱 / 用户主目录 → `user` / `<machine>` / `user@example.com`），但非用户目录的路径会保留，**提交前扫一眼**；
+- 不要在 issue / PR 里贴 token、密钥、凭据文件；
 - 发现的漏洞请先私下联系维护者，不要直接公开利用细节。
+
+## License
+
+本项目使用 **MIT**（见 [LICENSE](LICENSE)）。提交 PR 即表示你同意自己的贡献按 MIT 授权。
+DSH 私人医生是非官方项目，与深度求索无关。
 
 ## 行为准则
 

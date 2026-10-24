@@ -2,6 +2,16 @@
 
 > 每个版本一句话说清"给你带来了什么"。详细技术变更见 [CHANGELOG.md](CHANGELOG.md)，安装包见 [Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)。
 
+## 怎么选入口
+
+| 你的情况 | 用哪个 |
+|---|---|
+| DSH 正常，想平时体检 / 一键修 | **插件面板**（推荐，装 `dsh-doctor-plugin.zip`） |
+| 没有 Node、没有命令行 | **`dsh-doctor.exe`**（自包含，双击即用） |
+| DSH 桌面端已经彻底报废 | **`dsh-doctor.exe`**——不依赖 DSH、不依赖 Node、不联网，仍可体检 / 修图标 / 生成差异报告 |
+| 想提交 issue / 找人帮忙 | 面板页脚「环境差异报告」或 `dsh-doctor.exe diff`，生成的 MD **已脱敏** |
+| 连 Node 都没有（Linux/macOS 先装 Node） | Windows 用 `dsh-doctor-env-win-x64.zip`（自带 node.exe） |
+
 ---
 
 ## v0.10.2 — 2026-10-24
