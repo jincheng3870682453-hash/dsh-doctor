@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-10-24 · 当前版本 **v0.10.4** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-10-24 · 当前版本 **v0.11.0** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 
@@ -21,7 +21,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 
 | 项 | 值 |
 |---|---|
-| 最新 Release | `v0.10.4`（4 个资产：exe / unix tar / 环境包 / 插件 zip） |
+| 最新 Release | `v0.11.0`（5 个资产：exe / doctor-sys.exe / unix tar / 环境包 / 插件 zip） |
 | 插件版本 | `plugin/package.json` → 0.10.4 |
 | 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
@@ -36,6 +36,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 路径 | 作用 |
 |---|---|
 | `plugin/` | **核心插件**：`lib/index.js`（host ~2100 行）、`lib/client.js`（面板）、`lib/scan-worker.mjs`（后台扫描线程）、`locale/*.json`、`cordis.patch.yml`、`icon.svg`、`package.json`（声明 `dsh.bundle.patch`） |
+| `doctor-sys/` | **Rust 底层原语引擎**（设计文档 D1/§9 的 P0 落地）：零第三方依赖、静态单文件、JSON over stdio、15 个原语 + selftest。协议与实测坑见 `doctor-sys/README.md` |
 | `tools/cli.mjs` | 跨平台菜单式 CLI（scan/fix/history/rescue/report/diff） |
 | `tools/mcp.mjs` | stdio MCP server（doctor_scan / doctor_history / doctor_fix / doctor_rescue） |
 | `tools/watch.mjs` | 外部守护脚本（Windows 气泡通知） |
@@ -135,8 +136,11 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 22 | 报告自动脱敏 | 已实现 | `sanitizeText` / `Get-SanitizedText` |
 | 23 | 自动更新（检查+打开下载页） | 已实现 | `checkUpdate` + `POST /update/open`（只允许本仓库 URL） |
 | 24 | 系统通知归因 DSH（不是 PowerShell） | 已实现 | 渲染层 `new Notification`；host 通知默认关闭 |
-| 25 | 打包（EXE / Unix / 环境包 / 插件 zip） | 已实现 | `tools/build.ps1`、`tools/package-unix.sh`、CI `build.yml` |
+| 25 | 打包（EXE / doctor-sys / Unix / 环境包 / 插件 zip） | 已实现 | `tools/build.ps1`、`tools/package-unix.sh`、CI `build.yml` |
 | 26 | 文档体系（README/UPDATES/CONTRIBUTING/bugs/baseline/fixable/catalog/traps/protocol/design） | 已实现 | 根目录 + docs/ |
+| 27 | Rust 原语引擎 doctor-sys（设计 §9，P0） | 已实现 | `doctor-sys/`：15 原语 + selftest + 单元测试，随 Release 分发；build/ci 均有专门 job |
+| 28 | history.jsonl 轮转（256 KB → history.1.jsonl） | 已实现 | `appendHistory`，读侧自动从上一代补齐 |
+| 29 | 救援多实例互斥（rescue.lock，3 分钟过期） | 已实现 | `rescueWeb` 包 acquire/release，finally 释放 |
 
 ---
 
@@ -205,6 +209,8 @@ node tools/cli.mjs diff            # 环境差异报告（写桌面）
 node --check plugin/lib/index.js
 node --check plugin/lib/client.js
 node tools/worker-check.mjs        # 验证 worker 线程
+cargo build --release --manifest-path doctor-sys/Cargo.toml   # Rust 原语引擎
+doctor-sys/target/release/doctor-sys.exe selftest             # 15 原语自检
 ```
 
 插件调试：桌面端装本地目录（`plugin/` 绝对路径），改完重启；或 `plugin_manager set_bundle` 关→开 热重载。
@@ -246,10 +252,10 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 | 没有上架 npm | 只能本地目录/GitHub 安装 | 有 npm 账号可发布 `dsh-doctor` |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑 | 做安装向导（自启/托盘/卸载） |
-| AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | 用 AUMID 从外部进程发 |
+| AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | **v0.11.0 起有 `doctor-sys.exe notify` 原语**（正常桌面上下文可用；沙箱内被 UIPI 拒，如实返回 shown:false）；watch.mjs 换用它还没接 |
 | 基线未随版本演进 | 内置默认基线是静态的 | 定期对照新 DSH 版本更新 |
-| 多实例救援竞态 | 两个窗口同时点可能各起一个 | 加锁文件 |
-| 历史文件无轮转 | `history.jsonl` 会一直长 | 加按大小轮转 |
+| 插件 ACL 动作仍走 PowerShell | doctor-sys 引擎已就绪但插件未接 | P1：`DSH_DOCTOR_SYS` 指向 exe 时优先走它，PS 兜底 |
+| doctor-sys 未实机覆盖全部原语 | notify/quarantine/kill-tree 只在开发机验证过；reg 原语未实现 | 真机矩阵补验；按需补 reg-read |
 | EXE 在沙箱内写文件受限 | 已降级为打印报告 | 文档已提示"在桌面双击运行" |
 
 ---
@@ -272,8 +278,9 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 ```powershell
 node tools/cli.mjs scan            # 应正常输出体检结果
 node tools/cli.mjs diff            # 应写出桌面 MD（已脱敏）
-powershell -File tools/build.ps1   # 应产出 4 个产物
+powershell -File tools/build.ps1   # 应产出 5 个产物（含 doctor-sys.exe，需要 cargo；没有则 4 个 + 跳过提示）
 ./dist/release/dsh-doctor.exe scan # EXE 应能跑
+./dist/release/doctor-sys.exe selftest   # Rust 引擎自检应 ok:true
 $env:GH_TOKEN=(gh auth token); node tools/push.mjs   # 应输出 PUSH_OK
 ```
 

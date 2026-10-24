@@ -22,6 +22,28 @@
 
 ---
 
+## v0.11.0 — 2026-10-24
+
+- **底层引擎「发扬光大」**：设计文档里规划的 Rust 原语引擎 `doctor-sys.exe` 真做出来了——零第三方依赖、单文件、双击就能体检/修底层状态。插件和 EXE 后续都会逐步改走它。
+- **修复录不再无限长**：超过 256 KB 自动轮转，面板里的历史不丢。
+- **两个窗口同时点「起网页版」不会各起一个实例了**（互斥锁）。
+- 开发者：构建脚本在 Git Bash 下打 Unix 包失败的问题已修。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.11.0)
+
+## v0.10.4 — 2026-10-24
+
+- **安装步骤可直接照抄**：对齐真实「添加插件」对话框——解压插件包到固定目录 → 粘**绝对目录**进去 → 保持默认安装源 → 点安装；并说明对话框里那句「插件在本机以你的权限运行」是所有插件的通用警告。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.10.4)
+
+## v0.10.3 — 2026-10-24
+
+- **安装文档按 DSH 真实机制重写**（来源：`@deepseek-ai/dsh-plugin-manager`）：桌面端在插件页添加、非桌面 profile 用 `dsh plugin --profile <name> add`、会话里让 AI 用 `install_bundle`；说明 `desktop` profile 由 Electron 独占、bundle 必须声明 `dsh.bundle.patch`。
+- CONTRIBUTING 新增「把开发版装进 DSH 调试」（本地目录 = `link:` 语义，目录别移动）。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.10.3)
+
 ## v0.10.2 — 2026-10-24
 
 - **新增「桌面端报废时怎么办」说明**：DSH 完全起不来时，插件用不了，但 `dsh-doctor.exe` 照常可用——不依赖 DSH、不依赖 Node、不联网，双击就能体检 / 修图标 / 生成环境差异报告。
