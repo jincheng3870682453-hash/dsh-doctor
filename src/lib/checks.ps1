@@ -450,6 +450,41 @@ function Get-DoctorEnvironmentSnapshot {
     return $snapshot
 }
 
+function Test-DoctorPluginBootFailure {
+    $findings = New-Object System.Collections.ArrayList
+    $logDir = Join-Path $env:APPDATA '@deepseek-ai\dsh-desktop\logs'
+    if (-not (Test-Path -LiteralPath $logDir)) { return $findings.ToArray() }
+    Write-DoctorStep ('Check plugin boot failures: ' + $logDir)
+
+    $logs = @()
+    try {
+        $logs = @(Get-ChildItem -LiteralPath $logDir -Filter 'crash-*.log' -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 10)
+    } catch { $logs = @() }
+    $seen = @{}
+    foreach ($log in $logs) {
+        $text = ''
+        try { $text = Get-Content -LiteralPath $log.FullName -Raw -Encoding UTF8 } catch { continue }
+        if ($text.Length -gt 65536) { $text = $text.Substring(0, 65536) }
+        $errorMatch = [regex]::Match($text, '(ReferenceError|TypeError|SyntaxError|RangeError): ([^\r\n]+)')
+        if (-not $errorMatch.Success) { continue }
+        $fileMatch = [regex]::Match($text, 'file:///([^\s)''"]+?\.(?:js|mjs|cjs|ts))')
+        if (-not $fileMatch.Success) { continue }
+        $filePath = $fileMatch.Groups[1].Value -replace '/', '\'
+        try { $filePath = [System.Uri]::UnescapeDataString($filePath) } catch { }
+        $key = $errorMatch.Value + '|' + $filePath
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $message = $errorMatch.Groups[2].Value.Trim()
+        [void]$findings.Add((New-Finding -Id 'plugin-boot-failure' -Severity 'High' -Path $log.FullName `
+            -Title ('Plugin crashed during startup: ' + $message) `
+            -Detail ('File ' + $filePath + ' threw ' + $errorMatch.Groups[1].Value + ': ' + $message + '. ' +
+                'This is a plugin bug, not DSH itself (ESM is strict mode, so a missing declaration such as const server = ... throws). ' +
+                'Recover: use "disable third-party plugins, back up profile patch and restart" in the startup dialog; then fix, update or remove that plugin.') ))
+    }
+    return $findings.ToArray()
+}
+
 function Test-DoctorPermissionTooBroad {
     $findings = New-Object System.Collections.ArrayList
     $file = Join-Path (Get-DshHome) 'storages\session_projcache.json'
@@ -505,6 +540,7 @@ function Invoke-DoctorScan {
         'Test-DoctorPluginManifests',
         'Test-DoctorPluginSourceKind',
         'Test-DoctorCrashLogs',
+        'Test-DoctorPluginBootFailure',
         'Test-DoctorPermissionTooBroad'
     )
     $all = New-Object System.Collections.ArrayList

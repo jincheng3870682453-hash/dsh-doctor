@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.13.8 — 2026-10-24
+
+社区反馈：DSH 启动直接弹「应用无法启动」，错误是 `ReferenceError: server is not defined`，栈指向 `.../default-workspace/qq-bridge/index.js`。
+
+- **新检查 `plugin-boot-failure`**（JS + PS 两套）：扫描桌面端 crash 日志里的 `ReferenceError / TypeError / SyntaxError / RangeError` 和 `file:///…` 栈帧，直接报出**是哪个插件文件**把 DSH 启动搞崩，并给出恢复顺序。
+- 实测能识别截图里的案例：插件 `qq-bridge` 在模块加载阶段引用未声明变量（ESM 严格模式）。
+- `docs/traps.md` 加 #18；`docs/catalog.md` 加第 17 项。
+
+## v0.13.7 — 2026-10-24
+
+- **原生 Rust CLI（P1）**：`doctor-sys` 增加 `scan` / `fix` 子命令，编出 `dsh-doctor-native.exe`（单文件、纯 Rust、无 PowerShell / Node / 第三方 crate）。`scan` 覆盖 8 项检查，`fix` 支持桌面标签 / 宿主包副本 / patch 层恢复。
+- CI doctorsys job 增加原生冒烟测试，Release 增加该资产。
+- 为什么之前不是纯二进制：检查逻辑在 PS（EXE）和 JS（插件）两侧，Rust 只做底层原语；P2 再把剩余能力迁入并替换默认 EXE。
+
 ## v0.13.6 — 2026-10-24
 
 - **EXE 同步**：v0.13.5 的 `permission-too-broad` 只加在 JS 插件侧，`dsh-doctor.exe` 走的是 PowerShell 检查表，所以 EXE 扫不到。本版补上 PS 版 `Test-DoctorPermissionTooBroad`（读 `session_projcache.json`，按会话列出 `danger-full-access`），并重新打包 EXE。

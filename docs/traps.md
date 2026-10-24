@@ -99,6 +99,21 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Directory -Filter '@dee
 
 **防复发**：`/permission` 切成 `workspace-write` + `ask`；工作区单独建目录，不要选家目录/桌面/盘根。
 
+### 18. 第三方插件启动就崩：`ReferenceError: server is not defined`
+
+**症状**：DSH 弹「应用无法启动或已意外停止」，错误里有 `file:///.../<插件>/xxx.js` 和 `ReferenceError`；点退出后重开还是一样。
+
+**根因**：某个第三方/本地插件在模块加载阶段（top-level）抛未捕获异常。典型是引用未声明的变量，例如 `server.listen(...)` 但漏了 `const server = ...`；ESM 是严格模式，直接 `ReferenceError`，DSH 宿主跟着起不来。
+
+**医生怎么认**：v0.13.8 起 `plugin-boot-failure` 检查会从 crash 日志里提取插件路径和错误原文，直接指到文件。
+
+**怎么救**：
+1. 在启动失败对话框点 **「禁用第三方插件、备份 profile patch 并重启」**（DSH 自带的安全模式）；
+2. 按日志里的路径找到那个插件（例如 `...\default-workspace\qq-bridge\index.js`），补上变量声明 / 更新插件 / 移除它；
+3. 再重启桌面端。
+
+**注意**：这不是 DSH 本体的问题，重装 DSH 没用。
+
 ## 三、会话格式类
 
 ### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）

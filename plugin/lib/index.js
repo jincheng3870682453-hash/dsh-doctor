@@ -387,6 +387,43 @@ function checkCrashLogs() {
 	return findings
 }
 
+/**
+ * 第三方插件在模块加载阶段抛错（ReferenceError/TypeError…）时，DSH 会直接
+ * 弹「应用无法启动」。崩溃日志里有插件文件路径，这条检查负责把它指出来。
+ */
+function checkPluginBootFailure() {
+	const findings = []
+	const logDir = crashLogDir()
+	if (!existsSync(logDir)) return findings
+	let files = []
+	try { files = readdirSync(logDir).filter(name => name.startsWith('crash-')) } catch (error) { return findings }
+	const seen = new Set()
+	for (const name of files) {
+		let text = ''
+		try { text = readFileSync(join(logDir, name), 'utf8').slice(0, 65536) } catch (error) { continue }
+		if (!text.includes('file:///')) continue
+		const error = /(ReferenceError|TypeError|SyntaxError|RangeError): ([^\r\n]+)/.exec(text)
+		if (error === null) continue
+		const fileMatch = /file:\/\/\/([^\s)'"]+?\.(?:js|mjs|cjs|ts))/.exec(text)
+		if (fileMatch === null) continue
+		let filePath = fileMatch[1]
+		try { filePath = decodeURIComponent(filePath) } catch (error) { /* 保留原样 */ }
+		filePath = filePath.replace(/\//g, '\\')
+		if (!/^[A-Za-z]:/.test(filePath)) filePath = filePath.replace(/^\\/, '')
+		const key = error[1] + '|' + filePath
+		if (seen.has(key)) continue
+		seen.add(key)
+		findings.push(finding('plugin-boot-failure', 'high',
+			'第三方插件在启动时崩溃：' + error[2].slice(0, 80),
+			'`' + filePath + '` 在模块加载阶段抛出 `' + error[1] + ': ' + error[2] + '`，DSH 宿主直接起不来。'
+				+ '这是插件代码的问题，不是 DSH 本体：ESM 是严格模式，引用未声明的变量（比如漏写 `const server = …`）就会这样。'
+				+ '处理：在启动失败对话框点「禁用第三方插件、备份 profile patch 并重启」；再到该插件目录修掉/更新/移除它。'
+				+ '崩溃日志：' + name,
+			join(logDir, name), null))
+	}
+	return findings
+}
+
 /* ── 会话 / credentials / patch 层 / PATH ───────────────────────────── */
 
 function decodeZstdFile(path) {
@@ -642,6 +679,7 @@ const DETECTORS = {
 	'profile-host-duplicate': () => checkProfileHostDuplicates(),
 	'desktop-session-activity': () => checkDesktopSessions(),
 	'crash-logs': () => checkCrashLogs(),
+	'plugin-boot-failure': () => checkPluginBootFailure(),
 	'session-legacy-kind': () => checkLegacySessions(),
 	'credentials-version': () => checkCredentials(),
 	'patch-layer-missing': () => checkPatchLayer(),
@@ -750,6 +788,7 @@ function scan() {
 		checkDesktopSessions,
 		checkProfileHostDuplicates,
 		checkCrashLogs,
+		checkPluginBootFailure,
 		checkLegacySessions,
 		checkCredentials,
 		checkPatchLayer,

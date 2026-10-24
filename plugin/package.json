@@ -1,6 +1,6 @@
 {
   "name": "dsh-doctor-plugin",
-  "version": "0.13.7",
+  "version": "0.13.8",
   "description": "DSH 私人医生：检查并一键修复桌面端在 Windows 上踩过的坑（桌面图标变白/闪烁、工作区注册在桌面、profile 宿主包重复、启动崩溃）",
   "type": "module",
   "main": "lib/index.js",

@@ -23,6 +23,12 @@
 
 ---
 
+## v0.13.8 — 2026-10-24
+
+- **DSH 启动崩溃能定位到插件了**：新检查 `plugin-boot-failure` 会读崩溃日志，直接告诉你"是 `qq-bridge/index.js` 抛了 `ReferenceError: server is not defined`"，并给出恢复按钮和修法。插件和 EXE 两侧都生效。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.8)
+
 ## v0.13.7 — 2026-10-24
 
 - **原生 CLI 来了（P1）**：`dsh-doctor-native.exe` 是纯 Rust 单文件二进制（无 PowerShell、无 Node、无第三方 crate），`scan` 覆盖 8 项检查、`fix` 支持桌面标签 / 宿主包副本 / patch 层恢复。Release 新增该资产。
