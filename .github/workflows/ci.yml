@@ -1,0 +1,169 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: smoke · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        shell: bash
+        run: |
+          node --check plugin/lib/index.js
+          node --check plugin/lib/client.js
+          node --check tools/cli.mjs
+          node --check tools/mcp.mjs
+      - name: CLI version
+        shell: bash
+        run: node tools/cli.mjs version
+      - name: CLI scan on a clean home
+        shell: bash
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-home
+        run: |
+          mkdir -p "$DSH_HOME"
+          node tools/cli.mjs scan
+
+  powershell-smoke:
+    name: smoke · Windows PowerShell scripts
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PS 5.1
+        shell: powershell
+        run: ./tests/smoke.ps1
+      - name: PowerShell 7
+        shell: pwsh
+        run: ./tests/smoke.ps1
+
+  doctor-sys:
+    name: smoke · Rust engine (build / test / selftest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (zero dependency, offline)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+            Write-Host 'cargo not found - skip'; exit 0
+          }
+          cargo build --release --manifest-path doctor-sys/Cargo.toml
+      - name: Unit tests + selftest
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          cargo test --release --manifest-path doctor-sys/Cargo.toml
+          $out = ./doctor-sys/target/release/doctor-sys.exe selftest | ConvertFrom-Json
+          if (-not $out.data.ok) { throw 'doctor-sys selftest failed' }
+          Write-Host 'doctor-sys selftest ok'
+      - name: MCP stdio regression (engine-present paths)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          node tests/mcp.test.mjs
+      - name: Write-primitive smoke (runner has a normal desktop context)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          $exe = './doctor-sys/target/release/doctor-sys.exe'
+          $probe = Join-Path $env:RUNNER_TEMP 'doctor-sys-probe'
+          $snap = Join-Path $env:RUNNER_TEMP 'doctor-sys-snap'
+          New-Item -ItemType Directory -Force -Path $probe | Out-Null
+          Set-Content -LiteralPath (Join-Path $probe 'a.txt') -Value 'x' -Encoding UTF8
+          $low = & $exe set-integrity-label --path $probe --label low | ConvertFrom-Json
+          if (-not $low.ok) { throw ('set-integrity-label low failed: ' + $low.error) }
+          $medium = & $exe set-integrity-label --path $probe --label medium | ConvertFrom-Json
+          if (-not $medium.ok) { throw ('set-integrity-label medium failed: ' + $medium.error) }
+          $saved = & $exe snapshot-write --paths $probe --destDir $snap | ConvertFrom-Json
+          if (-not $saved.ok) { throw ('snapshot-write failed: ' + $saved.error) }
+          $restored = & $exe snapshot-restore --snapshotDir $snap | ConvertFrom-Json
+          if (-not $restored.ok) { throw ('snapshot-restore failed: ' + $restored.error) }
+          $renamed = & $exe quarantine-dir --path $probe | ConvertFrom-Json
+          if (-not $renamed.ok) { throw ('quarantine-dir failed: ' + $renamed.error) }
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'doctor-sys-probe') -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem $env:RUNNER_TEMP -Filter 'doctor-sys-probe*' -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $snap -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'doctor-sys write primitives ok'
+
+  integration:
+    name: integration · fix on a fake DSH home
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Risky workspace is removed, and a backup exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DSH_HOME="$RUNNER_TEMP/dsh"
+          mkdir -p "$DSH_HOME/storages"
+          cat > "$DSH_HOME/storages/workspace.json" <<JSON
+          {"unit":{"name":"workspace","version":2},
+           "global":{"initialized":true,"workspaceIds":["keep","risky"]},
+           "tables":{"workspaces":{
+             "keep":{"path":"/work/project","title":"Project"},
+             "risky":{"path":"$HOME/Desktop","title":"Desktop"}}}}
+          JSON
+          node tools/cli.mjs fix workspace-entry
+          node - <<'NODE'
+          const fs = require('fs')
+          const path = process.env.DSH_HOME + '/storages/workspace.json'
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'))
+          if (!data.tables.workspaces.keep) { console.error('keep workspace disappeared'); process.exit(1) }
+          if (data.tables.workspaces.risky) { console.error('risky workspace still present'); process.exit(2) }
+          if (data.global.workspaceIds.includes('risky')) { console.error('stale reference left'); process.exit(3) }
+          const backups = fs.readdirSync(process.env.DSH_HOME + '/storages').filter(n => n.startsWith('workspace.json.bak-'))
+          if (backups.length === 0) { console.error('no backup created'); process.exit(4) }
+          console.log('integration OK')
+          NODE
+
+      - name: doctor-sys bridge (fake engine, full protocol check)
+        shell: bash
+        run: node tests/bridge.test.mjs
+
+      - name: Low-label pattern matrix (SDDL truth table)
+        shell: bash
+        run: node tests/label-pattern.test.mjs
+
+      - name: MCP stdio regression (engine-missing paths)
+        shell: bash
+        run: node tests/mcp.test.mjs
+
+  stress:
+    name: stress · 30 scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 30 consecutive scans must never throw
+        shell: bash
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-stress
+        run: |
+          set -euo pipefail
+          mkdir -p "$DSH_HOME/storages"
+          start=$(date +%s)
+          for i in $(seq 1 30); do
+            node tools/cli.mjs scan > /dev/null || { echo "scan #$i failed"; exit 1; }
+          done
+          end=$(date +%s)
+          echo "30 scans in $((end - start))s"
