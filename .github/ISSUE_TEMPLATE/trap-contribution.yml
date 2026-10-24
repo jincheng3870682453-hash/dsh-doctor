@@ -1,0 +1,60 @@
+name: 投稿一个新坑（Bug 图鉴）
+description: 你踩到一个新坑并找到了修法，想把它收进 bugs/ 图鉴。
+title: "[trap] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个仓库的 [bugs/](https://github.com/jincheng3870682453-hash/dsh-doctor/tree/main/bugs) 图鉴就是靠大家投稿长出来的。
+        格式参考现有条目：**症状 / 根因 / 修法 / 验证 / 对应版本或提交**。
+
+  - type: input
+    id: title
+    attributes:
+      label: 一句话标题
+      description: 用"你看到的现象"起名，不要用代码术语。
+      placeholder: 桌面图标全部变成白纸
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 症状
+      placeholder: 你会看到什么？什么操作之后出现？哪些情况正常、哪些不正常？
+    validations:
+      required: true
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: 根因
+      description: 你最后定位到的原因；不确定就写"推测"。
+    validations:
+      required: true
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: 修法
+      description: 手动步骤或命令；如果医生已经能一键修，写清是哪个动作。
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: verify
+    attributes:
+      label: 怎么验证修好了
+      placeholder: 看哪个文件 / 跑什么命令 / 界面应该变成什么样。
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: Windows 11 + DSH 0.2.1-rc.2
+    validations:
+      required: false
