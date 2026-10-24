@@ -159,6 +159,9 @@ node dsh-doctor.mjs fix workspace-entry
 
 桌面端报废时也能贡献——`dsh-doctor.exe diff` 生成的报告已脱敏，直接贴进 issue 即可。
 
+**遇到问题？** [点这里提 issue](https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new/choose)。模板会要求：
+DSH 版本、操作系统、**插件清单与冲突**、**报错完整原文**、以及 `dsh-doctor.exe diff` / 面板「环境差异报告」生成的**诊断报告**（已自动脱敏）。
+
 ## License
 
 [MIT](LICENSE) · 贡献按 MIT 授权 · 非官方项目，与深度求索无关
