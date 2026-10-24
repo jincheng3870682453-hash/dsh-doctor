@@ -8,7 +8,9 @@
 
 **点一下修复。** DSH Doctor：不仅是修复工具，更是 DSH 桌面端的**底层运行时急救箱**——专治标签损坏 / 进程失控导致的图标变白、屏闪、白屏与启动崩溃。
 
-[![Version](https://img.shields.io/badge/Version-0.8.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[**更新记录**](UPDATES.md) · [参与贡献](CONTRIBUTING.md) · [Bug 图鉴](bugs/README.md) · [修复清单](docs/fixable.md)
+
+[![Version](https://img.shields.io/badge/Version-0.9.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -75,19 +77,25 @@ node dsh-doctor.mjs fix workspace-entry
 
 | | |
 |---|---|
+| [UPDATES.md](UPDATES.md) | **更新记录**：每个版本带来了什么，以及怎么更新 |
 | [docs/fixable.md](docs/fixable.md) | **修复清单**：按症状列出能修 / 只查，以及根因 |
 | [docs/catalog.md](docs/catalog.md) | 修复目录：每条检查 / 备份位置 / 验证方式 |
 | [docs/traps.md](docs/traps.md) | 踩雷清单 14 类，含根因与手工修复 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |
 | [docs/design.md](docs/design.md) | 架构、版本无关性、通知与逃生设计 |
 | [bugs/](bugs/README.md) | **Bug 图鉴**：遇到过的问题 + 根因 + 修法 + 验证 |
-| [CHANGELOG.md](CHANGELOG.md) | 版本记录 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 参与贡献：怎么提 bug、写检查包、提 PR |
+| [CHANGELOG.md](CHANGELOG.md) | 技术变更明细 |
 
 ## 安全
 
 - 默认只读；每个修复先备份、改完复检，失败自动还原；
 - 没有 shell 通道：检查包只能声明「检测原语 + 内置修复 id」；
 - 不碰 DSH 安装目录、不注册服务/驱动；改动均可回滚。
+
+## 参与贡献
+
+踩到新坑就是最好的贡献：按 [CONTRIBUTING.md](CONTRIBUTING.md) 把症状、复现步骤、现场证据写进 [bugs/](bugs/)，或者写一个 JSON 检查包丢进 `examples/checks/`。
 
 ## License
 
