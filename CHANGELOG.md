@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.10 — 2026-10-24
+
+社区反馈：新网友的 DSH 打不开，**把 DSH 家目录改名后就能启动**——典型的"状态坏了、绕过家目录"救急。
+
+- **新检查 `stale-home-backup`**（JS + PS）：扫描 `~/.dsh` 旁边被改名的旧家目录（如 `.dsh.bak`、`.dsh_old`），提醒旧会话/插件/设置还在里面，先别删。
+- **新检查 `storage-corrupt`**（JS + PS）：解析 `~/.dsh/storages/*.json`，损坏时报出来（可能直接导致启动/加载失败）。
+- 顺手修了 `storage-corrupt` 初版用 `readDirNames` 只遍历目录导致漏报的问题。
+- `docs/traps.md` 加 #20（改名救急的正确处理顺序）；`docs/catalog.md` 加第 19、20 项。
+
 ## v0.13.9 — 2026-10-24
 
 社区排障报告确认：qq-bridge 的根因不是插件入口，而是 **profile 注册的 stdio MCP server 里有一个加载失败**（`mcp-media.js` 把 `const server` 声明在 `if` 里、却在外面调用 `server.connect()` → ReferenceError）。**任何一个 MCP server 加载失败，DSH host 都会直接退出**，桌面端就是「应用无法启动」，shell 重启后行号变化，看起来像"老崩溃"。

@@ -23,6 +23,13 @@
 
 ---
 
+## v0.13.10 — 2026-10-24
+
+- **"把 DSH 家目录改名后能启动"不再等于修好**：新检查 `stale-home-backup` 会找到被改名的旧 `~/.dsh`（会话/插件/设置都在里面，先别删）；`storage-corrupt` 会报出 `storages` 下损坏的 JSON。
+- 插件和 EXE 两侧都生效；配合 #20 踩雷条目，按"先定位 → 再拷回 → 最后清理"的顺序处理。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.10)
+
 ## v0.13.9 — 2026-10-24
 
 - **启动前就能发现"拖垮 host 的 MCP"**：新检查 `mcp-entry-broken` 会读 profile 里注册的 stdio MCP server，入口文件不存在或 `node --check` 失败直接报高危——一个 MCP server 加载失败就会让 DSH 启动即退出。

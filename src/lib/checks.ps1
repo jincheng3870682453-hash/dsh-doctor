@@ -578,6 +578,45 @@ function Test-DoctorMcpEntries {
     return $findings.ToArray()
 }
 
+function Test-DoctorStaleHomeBackup {
+    $findings = New-Object System.Collections.ArrayList
+    $homeDir = Get-DshHome
+    if ([string]::IsNullOrWhiteSpace($homeDir)) { return $findings.ToArray() }
+    $parent = Split-Path -Parent $homeDir
+    if (-not (Test-Path -LiteralPath $parent)) { return $findings.ToArray() }
+    $current = $homeDir.TrimEnd('\', '/')
+    foreach ($dir in @(Get-ChildItem -LiteralPath $parent -Directory -Force -ErrorAction SilentlyContinue)) {
+        if ($dir.FullName.TrimEnd('\', '/') -eq $current) { continue }
+        if ($dir.Name -notmatch '^\.dsh([._\s-]|$)') { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $dir.FullName 'profiles')) -and
+            -not (Test-Path -LiteralPath (Join-Path $dir.FullName 'sessions')) -and
+            -not (Test-Path -LiteralPath (Join-Path $dir.FullName 'storages'))) { continue }
+        Write-DoctorStep ('Check stale DSH home: ' + $dir.FullName)
+        [void]$findings.Add((New-Finding -Id 'stale-home-backup' -Severity 'Medium' -Path $dir.FullName `
+            -Title ('Old DSH home left over: ' + $dir.Name) `
+            -Detail ('Current home is ' + $homeDir + '; ' + $dir.FullName + ' looks like a renamed old home (a common rescue move when DSH would not start). Keep it: sessions, plugins and settings live there. Copy what you need before deleting.')))
+    }
+    return $findings.ToArray()
+}
+
+function Test-DoctorStorageCorrupt {
+    $findings = New-Object System.Collections.ArrayList
+    $dir = Join-Path (Get-DshHome) 'storages'
+    if (-not (Test-Path -LiteralPath $dir)) { return $findings.ToArray() }
+    Write-DoctorStep ('Check storage JSON: ' + $dir)
+    foreach ($file in @(Get-ChildItem -LiteralPath $dir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        if ($file.Length -gt 8MB) { continue }
+        try {
+            $null = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch {
+            [void]$findings.Add((New-Finding -Id 'storage-corrupt' -Severity 'Medium' -Path $file.FullName `
+                -Title ('Corrupt storage file: ' + $file.Name) `
+                -Detail ('Not valid JSON: ' + $_.Exception.Message + '. DSH may fail to start or load state. Back it up, then delete it so it rebuilds.')))
+        }
+    }
+    return $findings.ToArray()
+}
+
 function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
@@ -589,6 +628,8 @@ function Invoke-DoctorScan {
         'Test-DoctorCrashLogs',
         'Test-DoctorPluginBootFailure',
         'Test-DoctorMcpEntries',
+        'Test-DoctorStaleHomeBackup',
+        'Test-DoctorStorageCorrupt',
         'Test-DoctorPermissionTooBroad'
     )
     $all = New-Object System.Collections.ArrayList

@@ -585,6 +585,69 @@ function checkMcpEntries() {
 	return findings
 }
 
+/**
+ * 启动失败时常见的自救是把 ~/.dsh 改名后重开，DSH 会新建一份干净家目录。
+ * 旧目录还在旁边，会话/插件/设置都在里面——这条检查防止"救活了但把数据忘了"。
+ */
+function checkStaleHomeBackup() {
+	const findings = []
+	const home = dshHome()
+	const parent = dirname(home)
+	let names = []
+	try { names = readdirSync(parent) } catch (error) { return findings }
+	const current = home.toLowerCase()
+	for (const name of names) {
+		if (!/^\.dsh(?:[._\s-]|$)/i.test(name)) continue
+		const path = join(parent, name)
+		if (path.toLowerCase() === current) continue
+		if (!existsSync(join(path, 'profiles')) && !existsSync(join(path, 'sessions')) && !existsSync(join(path, 'storages'))) continue
+		let sessionCount = 0
+		try {
+			const sessionsDir = join(path, 'sessions')
+			if (existsSync(sessionsDir)) {
+				for (const workspace of readdirSync(sessionsDir)) {
+					try { sessionCount += readdirSync(join(sessionsDir, workspace)).length } catch (error) { /* skip */ }
+				}
+			}
+		} catch (error) { /* skip */ }
+		findings.push(finding('stale-home-backup', 'medium',
+			'发现旧 DSH 家目录（可能是改名救急留下的）：' + name,
+			'当前家目录是 `' + home + '`，旁边还有一份 `' + path + '`'
+				+ (sessionCount > 0 ? '（约 ' + sessionCount + ' 个会话目录）' : '')
+				+ '。多半是启动失败时把它改名绕过、让 DSH 新建了一份干净配置。'
+				+ '**先别删**：需要找回会话/插件/设置时从里面拷；确认不要了再清理。',
+			path, null))
+	}
+	return findings
+}
+
+/** storages 下的 JSON 损坏时，相关的启动/加载可能直接失败；这里做只读解析。 */
+function checkStorageCorrupt() {
+	const findings = []
+	const dir = join(dshHome(), 'storages')
+	if (!existsSync(dir)) return findings
+	let names = []
+	try { names = readdirSync(dir) } catch (error) { return findings }
+	for (const name of names) {
+		if (!name.endsWith('.json')) continue
+		const path = join(dir, name)
+		let size = 0
+		try { size = statSync(path).size } catch (error) { continue }
+		if (size > 8 * 1024 * 1024) continue
+		try {
+			JSON.parse(readFileSync(path, 'utf8'))
+		} catch (error) {
+			findings.push(finding('storage-corrupt', 'medium',
+				'存储文件损坏：' + name,
+				'`' + path + '` 不是合法 JSON（' + String(error.message || error).slice(0, 120) + '）。'
+					+ 'DSH 启动/加载相关状态时可能直接失败。修复：先备份这个文件，再删除让它重建；'
+					+ '需要保数据时把文件发出来人工修。',
+				path, null))
+		}
+	}
+	return findings
+}
+
 /** PATH 里指向不存在文件的 dsh 命令，是"命令莫名其妙不工作"的常见根。 */
 function checkPathVariable() {
 	const findings = []
@@ -735,6 +798,8 @@ const DETECTORS = {
 	'patch-layer-missing': () => checkPatchLayer(),
 	'mcp-entry-broken': () => checkMcpEntries(),
 	'path-dead-dsh': () => checkPathVariable(),
+	'stale-home-backup': () => checkStaleHomeBackup(),
+	'storage-corrupt': () => checkStorageCorrupt(),
 	'rescue-instance-dead': () => checkRescueInstance(),
 	'workspace-not-writable': () => checkWorkspaceWritability(),
 	'workspace-not-grantable': () => checkWorkspaceGrantability(),
@@ -845,6 +910,8 @@ function scan() {
 		checkPatchLayer,
 		checkMcpEntries,
 		checkPathVariable,
+		checkStaleHomeBackup,
+		checkStorageCorrupt,
 		checkRescueInstance,
 		checkWorkspaceWritability,
 		checkWorkspaceGrantability,

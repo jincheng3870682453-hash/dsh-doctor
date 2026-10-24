@@ -18,6 +18,8 @@
 | 9 | `patch-layer-missing` | `patch-layer-missing` | `cordis.patch.yml` 被崩溃自修复清空（有备份才算） | 0.2 |
 | 10 | `path-dead-dsh` | `path-dead-dsh` | PATH 里的 `dsh` 指向不存在的文件 | 0.2 |
 | 11 | `workspace-not-writable` | `workspace-not-writable` | 工作区真的写不进去（起不来 / grantWrite Win32 5） | 0.5.3 |
+| 19 | `stale-home-backup` | `stale-home-backup` | 发现了改名救急留下的旧 ~/.dsh（会话/插件/设置还在里面） | 0.13.10 |
+| 20 | `storage-corrupt` | `storage-corrupt` | storages 下 JSON 损坏，可能让启动/加载失败 | 0.13.10 |
 | 18 | `mcp-entry-broken` | `mcp-entry-broken` | profile 里注册的 stdio MCP server 入口缺失 / 语法错 → host 启动即退出 | 0.13.9 |
 | 17 | `plugin-boot-failure` | `plugin-boot-failure` | 第三方插件在模块加载时抛 ReferenceError 等 → DSH 无法启动；从崩溃日志定位插件 | 0.13.8 |
 | 16 | `permission-too-broad` | `permission-too-broad` | 有会话开着 danger-full-access（+ approval never）→ 可删任意文件、不可撤销 | 0.13.5 |
