@@ -8,6 +8,21 @@ $ErrorActionPreference = 'Stop'
 $script:DshDoctorVersion = '0.1.0'
 
 function Get-DoctorVersion {
+    # 打包时 build.ps1 会把上面的常量替换成 plugin/package.json 的真实版本；
+    # 直接跑源码时退回到读仓库里的 package.json。
+    if ($script:DshDoctorVersion -ne '0.1.0') { return $script:DshDoctorVersion }
+    $candidates = @(
+        (Join-Path $PSScriptRoot '..\..\plugin\package.json'),
+        (Join-Path $PSScriptRoot '..\plugin\package.json')
+    )
+    foreach ($candidate in $candidates) {
+        try {
+            $pkg = Get-Content -LiteralPath $candidate -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($null -ne $pkg.version -and -not [string]::IsNullOrWhiteSpace([string]$pkg.version)) {
+                return [string]$pkg.version
+            }
+        } catch { }
+    }
     return $script:DshDoctorVersion
 }
 

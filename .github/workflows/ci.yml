@@ -44,6 +44,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: All .ps1 keep a UTF-8 BOM (PS 5.1 on GBK codepages needs it)
+        shell: pwsh
+        run: |
+          $bad = @()
+          Get-ChildItem -Recurse -Filter *.ps1 -File |
+            Where-Object { $_.FullName -notmatch '\\target\\|\\dist\\' } |
+            ForEach-Object {
+              $bytes = [IO.File]::ReadAllBytes($_.FullName)
+              $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+              if (-not $hasBom) { $bad += $_.FullName }
+            }
+          if ($bad.Count -gt 0) { throw ('missing UTF-8 BOM: ' + ($bad -join ', ')) }
+          Write-Host 'all .ps1 files have UTF-8 BOM'
       - name: PS 5.1
         shell: powershell
         run: ./tests/smoke.ps1
@@ -137,6 +150,10 @@ jobs:
       - name: doctor-sys bridge (fake engine, full protocol check)
         shell: bash
         run: node tests/bridge.test.mjs
+
+      - name: Report sanitizer (spaced usernames, home paths, emails)
+        shell: bash
+        run: node tests/sanitize.test.mjs
 
       - name: Low-label pattern matrix (SDDL truth table)
         shell: bash

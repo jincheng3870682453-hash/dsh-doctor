@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.13.2 — 2026-10-24
+
+修外部评审提出的 14 条（逐条核验后处理）：
+
+- **`set-integrity-label --recursive` 双重设置**（必修）：`recursive` 已经用 `(OI)(CI)` 继承设置父目录，又遍历整棵树逐个 `SetNamedSecurityInfoW`——桌面几千文件会慢到不可接受。现在 `recursive` 只设父目录继承，要覆盖子项显式标签时用新的 `--forceChildren`。
+- **`restore_sddl` owner 判断**（必修）：`starts_with("O:")` 对 `D:...O:...` 合法 SDDL 会漏判；改成看 `parts.owner` 指针是否为空。
+- **`selftest` 临时文件**（必修）：抽出 `selftest_acl_read()`，无论写入/acl-read 是否失败都在返回前清理实际写过的路径。
+- **`baseline` 的 `requiredFiles` 未被使用**（必修）：`normalizeBaseline` 映射该字段，`computeEnvironmentDiff` 检查每个 profile 的 `package.json` / `cordis.patch.yml`，缺失报 medium。
+- **报告脱敏漏带空格的用户名**（小）：`C:\Users\John Doe\...` 之前会变成 `C:\Users\user Doe\...`；改为匹配到下一个反斜杠/斜杠为止，并新增 `tests/sanitize.test.mjs` 进 CI。
+- **`checkWorkspaceWritability` 清理不彻底**：写入抛错时也会尝试删除半截临时文件。
+- **桥接支持 `.cmd/.bat` 引擎**：Windows 上 `spawnSync` 直接跑 `.cmd` 会 EINVAL；现在按 `cmd.exe /c` 包装，`tests/bridge.test.mjs` 在 Windows 上也能验证正向协议（不再只测回退分支）。
+- **版本号不再硬编码**：`tools/cli.mjs version` 读 `plugin/package.json`；EXE 构建时把 `$script:DshDoctorVersion` 替换成真实版本。
+- **构建冗余**：`build.ps1` 支持 `DSH_DOCTOR_SKIP_SYS=1`，CI 的 windows job 跳过 Rust 构建（引擎只由 `doctorsys` job 出）。
+- **文档修复**：fixable 的 rescue 链接指向 `bugs/07-rescue-pitfalls.md`；protocol 的通用原语补表头；UPDATES 合并重复的 v0.12.0 并按版本重排；HANDOFF 标题版本号对齐。
+- 澄清：仓库根目录**没有** `package.json`，`plugin/package.json` 是唯一包定义（已是 0.13.2 + `files: ["lib/"]`，`npm pack --dry-run` 9 个文件含 `scan-worker.mjs`）。
+
 ## v0.13.1 — 2026-10-24
 
 - **修 npm 包漏文件**：`files` 字段只列了 `lib/index.js` 和 `lib/client.js`，漏掉 `lib/scan-worker.mjs`；从 npm 安装后 worker 线程不可用，会退回同步扫描（正是 v0.9.0 修掉的卡顿问题）。改为 `"lib/"` 整目录打包，`npm pack --dry-run` 复核 9 个文件。

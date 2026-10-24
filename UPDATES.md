@@ -23,6 +23,12 @@
 
 ---
 
+## v0.13.2 — 2026-10-24
+
+- **修掉评审提的 14 条**：`set-integrity-label --recursive` 不再重复遍历整棵树（桌面几千文件不再卡）；ACL 还原对 `D:...O:...` 的 SDDL 不再漏判；selftest 临时文件一定清理；差异报告补上 `requiredFiles` 检查；脱敏支持带空格的用户名；`.cmd` 引擎也能被桥接调用；版本号不再硬编码；CI 去掉重复的 Rust 构建。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.2)
+
 ## v0.13.1 — 2026-10-24
 
 - **已上架 npm**：`dsh-doctor-plugin@0.13.1`（latest）。DSH「添加插件」对话框直接填包名即可装；命令行 `dsh plugin --profile <name> add dsh-doctor-plugin`；`npm install dsh-doctor-plugin` 也行。别装 `dsh-doctor`——那是第三方的同名包。
@@ -40,23 +46,8 @@
 
 ## v0.12.0 — 2026-10-24
 
-- 插件开始桥接 Rust 引擎（`DSH_DOCTOR_SYS` 指向 `doctor-sys.exe` 时优先走它，慢路径 PowerShell 兜底）；Low 标签判据修复；修复后 fail-closed 复检；watch 脚本改用引擎原生气泡。
-
-[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.12.0)
-
-## v0.11.0 — 2026-10-24
-
-- **底层引擎「发扬光大」**：设计文档里规划的 Rust 原语引擎 `doctor-sys.exe` 真做出来了——零第三方依赖、单文件、双击就能体检/修底层状态。插件和 EXE 后续都会逐步改走它。
-- **修复录不再无限长**：超过 256 KB 自动轮转，面板里的历史不丢。
-- **两个窗口同时点「起网页版」不会各起一个实例了**（互斥锁）。
-- 开发者：构建脚本在 Git Bash 下打 Unix 包失败的问题已修。
-
-[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.11.0)
-
-## v0.12.0 — 2026-10-24
-
-- **Rust 引擎正式接入插件**：装了 `doctor-sys.exe` 并设置 `DSH_DOCTOR_SYS` 环境变量后，图标签修复、ACL 读取、图标刷新都走引擎——更快，也不再起 PowerShell 进程。不设置就是原来的行为，随时可以退回。
-- **守护脚本的通知也换引擎了**（有引擎时）。
+- **Rust 引擎正式接入插件**：装了 `doctor-sys.exe` 并设置 `DSH_DOCTOR_SYS` 环境变量后，标签修复、ACL 读取、图标刷新都走引擎——更快，也不再起 PowerShell 进程。不设置就是原来的行为，随时可以退回。
+- 守护脚本的通知也换引擎；Low 标签判据修复；修复后 fail-closed 复检。
 - 想尝鲜：下载 Release 里的 `doctor-sys.exe` 放到固定目录，然后 `setx DSH_DOCTOR_SYS "C:\你的目录\doctor-sys.exe"`，重启 DSH 生效。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.12.0)
@@ -66,6 +57,15 @@
 - 审计 v0.11.0 后补的洞：CI 补上 Rust 写原语冒烟（之前写原语零覆盖）；`doctor-sys/README` 写清哪些原语在 DSH 沙箱里会被拒、`proc-kill-tree` 的误杀风险；救援锁不再把"锁建不起来"误报成"另一个窗口在启动"。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.11.1)
+
+## v0.11.0 — 2026-10-24
+
+- **底层引擎「发扬光大」**：设计文档里规划的 Rust 原语引擎 `doctor-sys.exe` 真做出来了——零第三方依赖、单文件、双击就能体检/修底层状态。插件和 EXE 后续都会逐步改走它。
+- **修复录不再无限长**：超过 256 KB 自动轮转，面板里的历史不丢。
+- **两个窗口同时点「起网页版」不会各起一个实例了**（互斥锁）。
+- 开发者：构建脚本在 Git Bash 下打 Unix 包失败的问题已修。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.11.0)
 
 ## v0.10.4 — 2026-10-24
 

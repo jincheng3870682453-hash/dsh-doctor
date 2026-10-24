@@ -60,7 +60,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build dsh-doctor.exe
         shell: pwsh
-        run: ./tools/build.ps1
+        # Rust 引擎由 doctorsys job 单独构建（避免两处 cargo 版本/产物不一致）。
+        run: ./tools/build.ps1 -SkipDoctorSys
       - name: Run the built EXE
         shell: pwsh
         env:

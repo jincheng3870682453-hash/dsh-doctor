@@ -6,11 +6,10 @@
 //   3. 引擎答 ok:false => 原样返回对象（由调用方决定回退），不是 null；
 //   4. 输出不是 JSON / 进程起不来 => null。
 //
-// unix（CI 的 ubuntu job）用可执行 shell 脚本当假引擎全量验证；Windows 本机
-// 没法直接 spawn 脚本文件（.cmd 会 EINVAL），只验 1 的回退分支——桥的正向
-// 逻辑由 ubuntu 覆盖，Windows 下真实 exe 的行为由 doctor-sys 自己的 selftest 覆盖。
+// unix（CI 的 ubuntu job）用可执行 shell 脚本当假引擎全量验证；Windows 用 .cmd
+// 假引擎验证同一套正向逻辑（桥接会把 .cmd 套上 cmd.exe /c 再跑）。
 import { strict as assert } from 'node:assert'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -63,6 +62,30 @@ if (process.platform !== 'win32') {
 	writeFileSync(fake, '#!/bin/sh\nexit 3\n')
 	chmodSync(fake, 0o755)
 	assert.equal(engine.doctorSys('acl-read', { path: '/x' }), null, '非 0 退出码应返回 null')
+}
+
+if (process.platform === 'win32') {
+	// Windows：用 .cmd 假引擎。桥接会套 cmd.exe /c，这里验证同样的正向逻辑。
+	const callLog = join(scratch, 'calls-win.log')
+	const fake = join(scratch, 'fake-doctor-sys.cmd')
+	const writeFake = (text) => writeFileSync(fake, ['@echo off', 'echo %* >> "%CALLS%"', 'echo ' + text, ''].join('\r\n'))
+	process.env.DSH_DOCTOR_SYS = fake
+	process.env.CALLS = callLog
+
+	writeFake('{"ok":true,"op":"fake","data":{"seen":"yes"}}')
+	const answer = engine.doctorSys('set-integrity-label', { path: 'C:\\x y', label: 'medium', recursive: true })
+	assert.deepEqual(answer, { ok: true, op: 'fake', data: { seen: 'yes' } }, '.cmd 引擎应解析第一行 JSON')
+	const calls = readFileSync(callLog, 'utf8').trim().split(/\r?\n/)
+	assert.ok(calls[0].includes('set-integrity-label'), '应调用对的原语')
+	assert.ok(calls[0].includes('--path'), '应把参数转成 --key value')
+	assert.ok(calls[0].includes('--recursive'), '布尔应转成旗标')
+
+	writeFake('{"ok":false,"op":"acl-read","error":"boom"}')
+	const failed = engine.doctorSys('acl-read', { path: '/x' })
+	assert.deepEqual(failed, { ok: false, op: 'acl-read', error: 'boom' }, 'ok:false 应原样返回')
+
+	writeFake('not json')
+	assert.equal(engine.doctorSys('acl-read', { path: '/x' }), null, '非 JSON 输出应返回 null')
 }
 
 delete process.env.DSH_DOCTOR_SYS

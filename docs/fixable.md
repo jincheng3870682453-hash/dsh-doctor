@@ -112,7 +112,7 @@
 - **你会看到**：浏览器里打开逃生地址，设置页、插件列表全报错。
 - **根因**：那个标签页指向的 host 已经退出（端口死了），或者打开的是**不带 token** 的地址。
 - **医生**：[只查] 识别"上次逃生实例已失效"并提醒；「起网页版」现在会复用活实例、用带 token 的地址打开、并把地址写到桌面。
-- **详情**：[traps #14](traps.md) · [design](design.md)
+- **详情**：[bugs/07-rescue-pitfalls](../bugs/07-rescue-pitfalls.md) · [design](design.md)
 
 <a id="crash"></a>
 ## 想知道之前崩过几次

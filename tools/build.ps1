@@ -1,14 +1,21 @@
 ﻿# 构建全部发行产物：Windows 急救 EXE + 跨平台 Node CLI + Linux/macOS 外壳 + Rust 原语引擎。
 # 输出到 dist/release/。
+param(
+    # CI 的 doctorsys job 已单独构建 Rust 引擎时使用，避免重复构建/产物不一致。
+    [switch]$SkipDoctorSys
+)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $release = Join-Path $root 'dist\release'
 New-Item -ItemType Directory -Path $release -Force | Out-Null
 $utf8NoBom = New-Object Text.UTF8Encoding($false)
 
-# ── 0) Rust 原语引擎 doctor-sys.exe（设计文档 §9；没有 cargo 就跳过，CI 单独出）──
+# ── 0) Rust 原语引擎 doctor-sys.exe（设计文档 §9；CI 的 doctorsys job 单独构建）──
+#    构建时传 -SkipDoctorSys 可跳过（CI 的 windows job 就是这么用的）。
 $cargo = Get-Command cargo -ErrorAction SilentlyContinue
-if ($cargo) {
+if ($SkipDoctorSys) {
+    Write-Host 'skip doctor-sys.exe (-SkipDoctorSys)'
+} elseif ($cargo) {
     & cargo build --release --manifest-path (Join-Path $root 'doctor-sys\Cargo.toml')
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
     Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'doctor-sys.exe') -Force
@@ -34,7 +41,10 @@ foreach ($part in $parts) {
     [void]$builder.AppendLine((Get-Content -LiteralPath $full -Raw -Encoding UTF8))
     [void]$builder.AppendLine('')
 }
-$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($builder.ToString()))
+# 把 PowerShell 侧的版本常量替换成真实版本（源码里是 0.1.0 占位）。
+$pluginVersion = (Get-Content -LiteralPath (Join-Path $root 'plugin\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+$scriptText = $builder.ToString().Replace("`$script:DshDoctorVersion = '0.1.0'", "`$script:DshDoctorVersion = '$pluginVersion'")
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($scriptText))
 
 $launcher = @'
 using System;

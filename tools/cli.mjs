@@ -8,7 +8,20 @@
 //   node dsh-doctor.mjs fix workspace-entry --yes
 //   node dsh-doctor.mjs history
 //   node dsh-doctor.mjs rescue
+import { readFileSync } from 'node:fs'
 import { scan, applyFixById, readHistory, rescueWeb, buildAiReport, buildDiffReport, writeDiffReport } from '../plugin/lib/index.js'
+
+/** 版本统一从 plugin/package.json 读，避免各处硬编码漂移。 */
+function readVersion() {
+	const candidates = [
+		new URL('../plugin/package.json', import.meta.url),
+		new URL('./plugin/package.json', import.meta.url),
+	]
+	for (const candidate of candidates) {
+		try { return String(JSON.parse(readFileSync(candidate, 'utf8')).version) } catch (error) { /* 试下一个 */ }
+	}
+	return 'unknown'
+}
 
 const FIXES = [
 	['desktop-label', '修桌面图标变白（Windows 专用）'],
@@ -132,7 +145,7 @@ async function main() {
 	if (command === 'rescue') { line(String((await rescueWeb()).message || '')); return 0 }
 	if (command === 'report') { line(buildAiReport()); return 0 }
 	if (command === 'diff') { await showDiffReport(); return 0 }
-	if (command === 'version' || command === '--version' || command === '-v') { line('0.5.0'); return 0 }
+	if (command === 'version' || command === '--version' || command === '-v') { line(readVersion()); return 0 }
 	line('未知命令：' + command)
 	line('可用：scan | fix <id> | history | rescue | version | （无参数进菜单）')
 	return 2

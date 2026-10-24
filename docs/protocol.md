@@ -68,7 +68,12 @@
 | `workspace-not-writable` | — | 工作区真的写不进去（会真写一个临时文件再删） |
 | `workspace-not-grantable` | — | Windows：owner 不是你、也没有 WRITE_DAC，DSH 授不了沙箱权限 |
 
-> 平台说明：`desktop-low-label` 只在 Windows 有；macOS/Linux 上桌面检查换成 `desktop-world-writable`（POSIX 权限位）。其余原语三平台通用。
+> 平台说明：`desktop-low-label` 只在 Windows 有；macOS/Linux 上桌面检查换成 `desktop-world-writable`（POSIX 权限位）。
+
+### 通用检测原语（三平台）
+
+| 原语 | 参数 | 作用 |
+| --- | --- | --- |
 | `acl` | `path`、`test`（`low-label` / `everyone-deny`） | 任意目录的 ACL 判定 |
 | `file-regex` | `path`、`pattern`、`maxFiles`（≤2000，默认 400） | 在目录里递归找匹配的文件 |
 | `dir-contains` | `path`、`names[]` | 目录里是否包含指定子目录名 |

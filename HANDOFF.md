@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-10-24 · 当前版本 **v0.13.0** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-10-24 · 当前版本 **v0.13.1** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 

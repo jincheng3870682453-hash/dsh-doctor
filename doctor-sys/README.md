@@ -46,7 +46,7 @@ doctor-sys.exe acl-read --path "C:\Users\user\Desktop"
 | `acl-read` | `path` | 读 SDDL / owner / group / 完整性标签（只读） |
 | `acl-save` | `path`, `file` | 把当前 SDDL 备份成 JSON |
 | `acl-restore` | `file` | 从备份还原（owner/group 写不动时自动降级，见下） |
-| `set-integrity-label` | `path`, `label`(low/medium/high), `recursive?` | 改强制完整性标签；recursive = (OI)(CI) 继承 |
+| `set-integrity-label` | `path`, `label`(low/medium/high), `recursive?`, `forceChildren?` | 改强制完整性标签；`recursive` = (OI)(CI) 继承（子项自动跟随，不遍历）；`forceChildren` 才逐项覆盖子项已有的显式标签 |
 | `remove-deny-ace` | `path`, `sid`（或 `everyone:true`） | 删指定 SID 的拒绝 ACE，其余保序 |
 | `proc-list` | — | 全进程快照（pid / ppid / exe） |
 | `proc-kill-tree` | `pid`, `dryRun?` | 按父子关系杀整棵树；拒绝杀 0/4/自己；dryRun 只列不杀 |

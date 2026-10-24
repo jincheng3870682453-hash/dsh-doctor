@@ -488,7 +488,9 @@ pub fn restore_sddl(path: &str, sddl: &str) -> c_result<String> {
     };
 
     let mut sections = 0;
-    if sddl.starts_with("O:") && !parts.owner.is_null() { sections |= OWNER_SECURITY_INFORMATION; }
+    // 不能靠 starts_with("O:")：SDDL 里 D: 在 O: 之前也是合法的。
+    // split_descriptor 已经保证 owner 非空才返回非空指针，直接看指针即可。
+    if !parts.owner.is_null() { sections |= OWNER_SECURITY_INFORMATION; }
     if sddl.contains("G:") && !parts.group.is_null() { sections |= GROUP_SECURITY_INFORMATION; }
     if sddl.contains("D:") && !parts.dacl.is_null() { sections |= DACL_SECURITY_INFORMATION; }
     if !sacl.is_null() { sections |= LABEL_SECURITY_INFORMATION; }

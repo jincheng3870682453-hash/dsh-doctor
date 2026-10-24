@@ -102,7 +102,12 @@ function doctorSys(op, args = {}, timeout = 20000) {
 		else if (value !== false && value !== null && value !== undefined) cli.push('--' + key, String(value))
 	}
 	try {
-		const run = spawnSync(exe, cli, { windowsHide: true, encoding: 'utf8', timeout })
+		// Windows 上 spawnSync 不能直接跑 .cmd/.bat（EINVAL），必须套 cmd.exe /c。
+		// 这样桥接也能接受 .cmd 假引擎/包装脚本（测试与自定义引擎都受益）。
+		const isBatch = isWindows && /\.(cmd|bat)$/i.test(exe)
+		const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : exe
+		const argv = isBatch ? ['/c', exe, ...cli] : cli
+		const run = spawnSync(command, argv, { windowsHide: true, encoding: 'utf8', timeout })
 		if (run.error || run.status !== 0 || typeof run.stdout !== 'string') return null
 		const line = run.stdout.split(/\r?\n/, 1)[0]
 		const parsed = JSON.parse(line)
@@ -572,10 +577,8 @@ function checkWorkspaceWritability() {
 		const target = workspace.path
 		if (!existsSync(target)) continue
 		const probe = join(target, '.dsh-doctor-write-test-' + process.pid + '-' + Date.now() + '.tmp')
-		let wrote = false
 		try {
 			writeFileSync(probe, 'ok', 'utf8')
-			wrote = true
 		} catch (error) {
 			const message = String(error && error.message ? error.message : error)
 			findings.push(finding('workspace-not-writable', 'high',
@@ -585,10 +588,8 @@ function checkWorkspaceWritability() {
 					+ (isWindows ? '一键修复会给当前账号补上完全控制（先备份 ACL）。' : '请手动检查该目录权限。'),
 				target, isWindows ? 'workspace-acl' : null))
 		} finally {
-			// 无论成败都清理，绝不给用户留垃圾文件。
-			if (wrote) {
-				try { unlinkSync(probe) } catch (error) { /* 删不掉不算致命 */ }
-			}
+			// 无论成败都清理（writeFileSync 抛错时也可能留下半截文件），绝不给用户留垃圾。
+			try { unlinkSync(probe) } catch (error) { /* 删不掉不算致命 */ }
 		}
 	}
 	return findings
@@ -1774,9 +1775,10 @@ function sanitizeText(input) {
 	const user = String(process.env.USERNAME || process.env.USER || '').trim()
 	const machine = hostname()
 
-	out = out.replace(/([A-Za-z]:\\Users\\)([^\\/\s`'"()<>|,;]+)/gi, '$1user')
-	out = out.replace(/(\/home\/)([^\/\s`'"()<>|,;]+)/g, '$1user')
-	out = out.replace(/(\/Users\/)([^\/\s`'"()<>|,;]+)/g, '$1user')
+	// 用户名可能带空格（C:\Users\John Doe），所以匹配到下一个分隔符为止，不排除空格。
+	out = out.replace(/([A-Za-z]:\\Users\\)([^\\\r\n]+)/gi, '$1user')
+	out = out.replace(/(\/home\/)([^/\r\n]+)/g, '$1user')
+	out = out.replace(/(\/Users\/)([^/\r\n]+)/g, '$1user')
 
 	if (user.length >= 3) {
 		try {
@@ -1794,6 +1796,7 @@ const DEFAULT_BASELINE = {
 	requiredBundles: ['@deepseek-ai/dsh-base'],
 	guiProfiles: ['desktop', 'web'],
 	guiRequiredBundles: ['@deepseek-ai/dsh-web-app'],
+	requiredFiles: ['package.json', 'cordis.patch.yml'],
 	forbiddenDependencies: ['@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-skill', '@deepseek-ai/schemastery', '@deepseek-ai/dsh-util-values', 'schemastery'],
 	forbiddenTopLevel: ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values'],
 	submitAs: 'https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new',
@@ -1819,6 +1822,7 @@ function normalizeBaseline(parsed) {
 	const report = parsed.report !== undefined && parsed.report !== null ? parsed.report : {}
 	return {
 		requiredBundles: Array.isArray(profiles.requiredBundles) ? profiles.requiredBundles : DEFAULT_BASELINE.requiredBundles,
+		requiredFiles: Array.isArray(profiles.requiredFiles) ? profiles.requiredFiles : DEFAULT_BASELINE.requiredFiles,
 		guiProfiles: Array.isArray(profiles.guiProfiles) ? profiles.guiProfiles : DEFAULT_BASELINE.guiProfiles,
 		guiRequiredBundles: Array.isArray(profiles.guiRequiredBundles) ? profiles.guiRequiredBundles : DEFAULT_BASELINE.guiRequiredBundles,
 		forbiddenDependencies: Array.isArray(profiles.forbiddenDependencies) ? profiles.forbiddenDependencies : DEFAULT_BASELINE.forbiddenDependencies,
@@ -1859,7 +1863,7 @@ function collectEnvironmentSnapshot() {
 		const bundles = pkg.dsh && Array.isArray(pkg.dsh.profile && pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : []
 		const dependencies = pkg.dependencies ? Object.keys(pkg.dependencies) : []
 		const topLevel = readDirNames(join(dir, 'node_modules'))
-		profileList.push({ name, bundles, dependencies, topLevel })
+		profileList.push({ name, dir, bundles, dependencies, topLevel })
 	}
 	const registry = readWorkspaceRegistry()
 	const workspaces = registry === null ? [] : registry.list.map(item => ({ id: item.id, path: item.path, title: item.title }))
@@ -1912,6 +1916,10 @@ function computeEnvironmentDiff(snapshot, baseline) {
 		if (badDeps.length > 0) add('medium', 'profile 依赖里出现宿主包', 'profile「' + profile.name + '」的 dependencies 含：' + badDeps.join('、') + '（应交给运行时提供）', profile.name)
 		const badTop = topLevel.filter(name => baseline.forbiddenTopLevel.includes(name))
 		if (badTop.length > 0) add('high', 'profile 里出现宿主包副本', 'profile「' + profile.name + '」的 node_modules 顶层有：' + badTop.join('、'), profile.name)
+		for (const file of baseline.requiredFiles) {
+			const target = join(profile.dir, file)
+			if (!existsSync(target)) add('medium', 'profile 缺少必需文件', 'profile「' + profile.name + '」缺少：' + file, target)
+		}
 	}
 
 	for (const entry of snapshot.pathEntries) {
@@ -2210,7 +2218,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN, sanitizeText }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]

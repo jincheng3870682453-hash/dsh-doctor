@@ -196,9 +196,13 @@ fn op_set_integrity_label(args: &Json) -> Result<Json, String> {
     let path = arg_str(args, "path")?;
     let label = arg_str(args, "label")?;
     let recursive = arg_bool(args, "recursive") || arg_bool(args, "children");
+    // recursive 用 (OI)(CI) 继承标志设置父目录，子项会自动继承，不再遍历整棵树
+    // （桌面几千个文件逐个 SetNamedSecurityInfoW 会慢到不可接受）。
+    // 需要覆盖子项已有的显式标签时，单独传 forceChildren。
+    let force_children = arg_bool(args, "forceChildren");
     let mut changed = 1usize;
     win::set_integrity_label(&path, &label, recursive)?;
-    if recursive {
+    if force_children {
         changed = walk_apply(&path, &|entry| win::set_integrity_label(&entry, &label, false).is_ok());
     }
     Ok(Json::obj()
@@ -391,24 +395,7 @@ fn op_selftest(_args: &Json) -> Result<Json, String> {
     })();
     checks.push(result_check("json-roundtrip", json_ok));
 
-    let temp = std::env::temp_dir().join(format!("doctor-sys-selftest-{}.txt", std::process::id()));
-    let acl_ok = (|| -> Result<(), String> {
-        // DSH 沙箱会拒绝写 %TEMP%（HANDOFF 5.6），退回当前目录。
-        let mut probe = temp.clone();
-        if std::fs::write(&probe, b"selftest").is_err() {
-            probe = std::env::current_dir().map_err(|error| format!("拿当前目录失败：{}", error))?
-                .join(format!("doctor-sys-selftest-{}.txt", std::process::id()));
-        }
-        std::fs::write(&probe, b"selftest").map_err(|error| format!("建临时文件失败：{}", error))?;
-        let data = op_acl_read(&Json::obj().set("path", Json::str(probe.to_string_lossy().into_owned())))?;
-        let _ = std::fs::remove_file(&probe);
-        if data.get("sddl").and_then(|value| value.as_str()).map(|text| text.contains("D:")).unwrap_or(false) {
-            Ok(())
-        } else {
-            Err("SDDL 里没有 DACL 段".into())
-        }
-    })();
-    let _ = std::fs::remove_file(&temp);
+    let acl_ok = selftest_acl_read();
     checks.push(result_check("acl-read", acl_ok));
 
     let probe = op_port_probe(&Json::obj().set("port", Json::num(1)).set("timeoutMs", Json::num(300)))?;
@@ -422,6 +409,29 @@ fn op_selftest(_args: &Json) -> Result<Json, String> {
     Ok(Json::obj()
         .set("ok", Json::Bool(all_ok))
         .set("checks", Json::Arr(checks)))
+}
+
+fn selftest_acl_read() -> Result<(), String> {
+    let file_name = format!("doctor-sys-selftest-{}.txt", std::process::id());
+    let mut probe = std::env::temp_dir().join(&file_name);
+    if std::fs::write(&probe, b"selftest").is_err() {
+        // DSH 沙箱会拒绝写 %TEMP%（HANDOFF 5.6），退回当前目录。
+        probe = std::env::current_dir()
+            .map_err(|error| format!("拿当前目录失败：{}", error))?
+            .join(&file_name);
+    }
+    let outcome = (|| -> Result<(), String> {
+        std::fs::write(&probe, b"selftest").map_err(|error| format!("建临时文件失败：{}", error))?;
+        let data = op_acl_read(&Json::obj().set("path", Json::str(probe.to_string_lossy().into_owned())))?;
+        if data.get("sddl").and_then(|value| value.as_str()).map(|text| text.contains("D:")).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err("SDDL 里没有 DACL 段".into())
+        }
+    })();
+    // 无论成功失败都清理：写入抛错、acl-read 失败也不会留垃圾文件。
+    let _ = std::fs::remove_file(&probe);
+    outcome
 }
 
 fn result_check(name: &str, result: Result<(), String>) -> Json {
