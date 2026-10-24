@@ -41,12 +41,23 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 
 插件是 **profile 级**的：装一次，该 profile 下所有会话都能用，重启后仍然在。
 
-### 方式一：DSH 应用内安装（推荐，桌面端用这个）
+### 方式一：应用内「添加插件」对话框（推荐，桌面端用这个）
 
-1. 下载 Release 里的 `dsh-doctor-plugin.zip`，**解压到一个固定目录**（别放桌面，免得和图标修复互相干扰）；
-2. 打开 DSH → 左侧边栏 **插件**（Plugins）页 → 点 **添加 / 安装**；
-3. 选**本地目录**，或把解压后含 `package.json` 的那层**绝对路径**粘进去；
-4. 装完默认启用，侧边栏出现「私人医生」；没立即生效就重启一次 DSH。
+DSH 侧边栏 → **插件** → **添加**，会弹出标题为 **「添加插件」** 的对话框，说明文字是：
+
+> 输入插件的包名、GitHub 仓库地址或本地目录路径。
+
+三种输入都支持，我们这种没上架 npm 的插件用**第三种**：
+
+1. 下载 Release 里的 `dsh-doctor-plugin.zip`，**解压到一个固定目录**，例如 `D:\dsh-doctor-plugin`（别放桌面，免得和图标修复互相干扰）；
+2. 在那个输入框里粘**解压后的绝对目录**：`D:\dsh-doctor-plugin`；
+3. 「安装源」（中国大陆镜像源）对本地目录没有影响，保持默认即可；
+4. 点 **安装**。装完默认启用，侧边栏出现「私人医生」；没立即生效就重启一次 DSH。
+
+对话框里的黄色提示「插件在本机以你的权限运行」是所有插件的通用警告——医生的代码全在仓库里、默认只读、改动先备份，可以自己审。
+
+> **别直接填本仓库的 GitHub 地址**：我们的 bundle 在 `plugin/` 子目录，仓库根不是 package，会被判为 `not-a-bundle`。
+> 想用 GitHub 地址装，先 `git clone`，然后在对话框里填 `...\dsh-doctor\plugin`。
 
 > 桌面端（`desktop` profile）的插件安装由 Electron 应用自己管理，命令行装不了——会提示
 > `profile "desktop" is managed exclusively by the Electron application`。
@@ -54,7 +65,7 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 ### 方式二：命令行（web / tui 等非桌面 profile）
 
 ```bash
-dsh plugin --profile web add "D:\dsh-doctor-plugin"
+dsh plugin --profile web add "D:\path\to\dsh-doctor\plugin"
 ```
 
 它内部就是 pnpm，接受**包名、本地目录、git 地址、tarball**；装完会自动加进 `dsh.profile.bundles` 并启用。

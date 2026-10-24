@@ -14,11 +14,11 @@
 
 ## 装插件（三种方式）
 
-1. **桌面端应用内**：侧边栏 → 插件（Plugins）→ 添加 / 安装 → 选本地目录（或把解压后的绝对路径粘进去）。装完默认启用，没生效就重启。
+1. **桌面端应用内**：侧边栏 → 插件 → 添加，弹出「添加插件」对话框（输入框支持**包名 / GitHub 仓库地址 / 本地目录路径**）。把解压后的绝对目录粘进去，例如 `D:\dsh-doctor-plugin`，点安装。装完默认启用，没生效就重启。
 2. **命令行（非桌面 profile）**：`dsh plugin --profile web add "D:\dsh-doctor-plugin"`。内部是 pnpm，包名 / 本地目录 / git / tarball 都行。
 3. **会话里让 AI 装**：`plugin_manager` 的 `install_bundle`，`target` 填绝对目录。
 
-> 桌面端的 `desktop` profile 由 Electron 应用独占，命令行会拒绝（`profile "desktop" is managed exclusively by the Electron application`）。插件包必须声明 `dsh.bundle.patch`。
+> 两个坑：① 桌面端的 `desktop` profile 由 Electron 应用独占，命令行会拒绝（`profile "desktop" is managed exclusively by the Electron application`）；② **别填本仓库 GitHub 地址**——bundle 在 `plugin/` 子目录，仓库根不是 package，会被判 `not-a-bundle`；要远程装先 `git clone`，再填 `...\dsh-doctor\plugin`。
 
 ---
 

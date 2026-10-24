@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.10.4 — 2026-10-24
+
+- **安装文档对齐真实的「添加插件」对话框**（输入框提示：包名 / GitHub 仓库地址 / 本地目录路径）：
+  - 给出可直接照抄的步骤：解压 → 粘绝对目录 → 保持默认安装源 → 点安装；
+  - 说明「插件在本机以你的权限运行」是所有插件的通用警告；
+  - 明确 **不要填本仓库 GitHub 地址**（bundle 在 `plugin/` 子目录，仓库根不是 package，会判 `not-a-bundle`），要远程装先 `git clone` 再填 `...\dsh-doctor\plugin`。
+
 ## v0.10.3 — 2026-10-24
 
 - **按 DSH 实际的安装机制重写安装文档**（来源：`@deepseek-ai/dsh-plugin-manager` 的 README 与 CLI）：

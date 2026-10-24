@@ -93,7 +93,7 @@ bash tools/package-unix.sh                        # Linux/macOS 包
 
 插件是 **profile 级**的，装一次对该 profile 下所有会话生效，重启后仍在。
 
-- **桌面端**：侧边栏 → 插件（Plugins）→ 添加 / 安装 → 选本地目录（指到 `plugin/` 或解压后的插件目录）。桌面端由 Electron 应用自己管包，**命令行装不了**，会提示 `profile "desktop" is managed exclusively by the Electron application`。
+- **桌面端**：侧边栏 → 插件 → 添加，在「添加插件」对话框里粘**本地目录绝对路径**（指到 `plugin/`）。桌面端由 Electron 应用自己管包，**命令行装不了**，会提示 `profile "desktop" is managed exclusively by the Electron application`。
 - **非桌面 profile**：`dsh plugin --profile web add "D:\path\to\dsh-doctor\plugin"`。内部就是 pnpm，接受包名 / 本地目录 / git / tarball，装完自动加进 `dsh.profile.bundles` 并启用。
 - **会话里**：`plugin_manager` 的 `install_bundle`，`target` 填**绝对目录**。
 
