@@ -51,6 +51,27 @@ jobs:
         shell: pwsh
         run: ./tests/smoke.ps1
 
+  doctor-sys:
+    name: smoke · Rust engine (build / test / selftest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (zero dependency, offline)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+            Write-Host 'cargo not found - skip'; exit 0
+          }
+          cargo build --release --manifest-path doctor-sys/Cargo.toml
+      - name: Unit tests + selftest
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          cargo test --release --manifest-path doctor-sys/Cargo.toml
+          $out = ./doctor-sys/target/release/doctor-sys.exe selftest | ConvertFrom-Json
+          if (-not $out.data.ok) { throw 'doctor-sys selftest failed' }
+          Write-Host 'doctor-sys selftest ok'
+
   integration:
     name: integration · fix on a fake DSH home
     runs-on: ubuntu-latest

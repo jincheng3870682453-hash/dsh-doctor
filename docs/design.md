@@ -268,18 +268,21 @@ catalog 每条带 `applies.runtime` 范围；DSH 一变，过期的自动停用�
 
 ## 9. 原语表（doctor-sys.exe 暴露的动词）
 
-| 原语 | 作用 |
-| --- | --- |
-| `acl-read` / `acl-save` / `acl-restore` | 读/备份/还原安全描述符 |
-| `set-integrity-label` | 改强制完整性标签（Low/Medium/High） |
-| `remove-deny-ace` | 删指定 SID 的拒绝项 |
-| `reg-read` / `reg-write` | 注册表（仅白名单键） |
-| `proc-list` / `proc-kill-tree` | 进程枚举、按 Job 杀树 |
-| `port-probe` | 端口存活探测 |
-| `notify` | 原生气泡/托盘通知 |
-| `shell-refresh` | `SHChangeNotify` 刷新外壳（避免重启 explorer） |
-| `quarantine-dir` | 重命名隔离目录 |
-| `snapshot-write` / `snapshot-restore` | 快照读写 |
+> **v0.11.0 起 P0 已落地**：`doctor-sys/` 目录（Rust、零第三方依赖、静态单文件约 300 KB）。
+> 协议：JSON over stdio，每个请求一个进程。原语明细与实测坑见 [doctor-sys/README.md](../doctor-sys/README.md)。
+
+| 原语 | 作用 | 状态 |
+| --- | --- | --- |
+| `acl-read` / `acl-save` / `acl-restore` | 读/备份/还原安全描述符 | v1 已实现 |
+| `set-integrity-label` | 改强制完整性标签（Low/Medium/High，可递归） | v1 已实现 |
+| `remove-deny-ace` | 删指定 SID 的拒绝项 | v1 已实现 |
+| `reg-read` / `reg-write` | 注册表（仅白名单键） | **v1 未实现**（现有引擎用不到，宁缺毋滥） |
+| `proc-list` / `proc-kill-tree` | 进程枚举、杀进程树（快照期父子近似；拒绝杀 0/4/自己） | v1 已实现 |
+| `port-probe` / `port-pid` | 端口连通探测、端口归属 pid | v1 已实现 |
+| `notify` | 原生气泡/托盘通知（沙箱内被 UIPI 拒，正常桌面上下文可用） | v1 已实现 |
+| `shell-refresh` | `SHChangeNotify` 刷新外壳（避免重启 explorer） | v1 已实现 |
+| `quarantine-dir` | 重命名隔离目录 | v1 已实现 |
+| `snapshot-write` / `snapshot-restore` | 快照读写（恢复前先备份现状） | v1 已实现 |
 
 > **没有 `exec`、没有 `shell`**：catalog 数据永远不能变成任意命令执行。
 
@@ -354,15 +357,15 @@ L3 的实现：
 
 ## 14. 里程碑
 
-| 阶段 | 内容 | 验收 |
-| --- | --- | --- |
-| P0 | doctor-sys.exe：ACL 读写 + 标签 + 通知 + 端口探测 | 单元测试 + 手工在 VM 验证 |
-| P1 | core：检测器 + 修复器 + 快照（TS） | 现有 PowerShell 原型的检测逻辑迁移 |
-| P2 | 守护进程 + 原生通知（§5） | 杀 DSH 进程 → 10 s 内收到气泡 |
-| P3 | DSH 插件面板（sidebar.panellist + main） | 面板能扫描、能修、能回滚 |
-| P4 | MCP + rescue + 升级拦截器 | 外部 agent 能调通 4 个只读工具 |
+| 阶段 | 内容 | 验收 | 状态 |
+| --- | --- | --- | --- |
+| P0 | doctor-sys.exe：ACL 读写 + 标签 + 通知 + 端口探测 | 单元测试 + 手工在 VM 验证 | **v0.11.0 已落地**（`doctor-sys/`，零依赖 Rust，15 原语含 selftest，随 Release 分发） |
+| P1 | core：检测器 + 修复器 + 快照（TS） | 现有 PowerShell 原型的检测逻辑迁移 | 进行中（插件 `plugin/lib/index.js` 承担；下一步：ACL 动作优先走 doctor-sys，PS 兜底） |
+| P2 | 守护进程 + 原生通知（§5） | 杀 DSH 进程 → 10 s 内收到气泡 | `tools/watch.mjs` 原型；气泡改走 doctor-sys notify 待接 |
+| P3 | DSH 插件面板（sidebar.panellist + main） | 面板能扫描、能修、能回滚 | **已落地**（`plugin/lib/client.js`） |
+| P4 | MCP + rescue + 升级拦截器 | 外部 agent 能调通 4 个只读工具 | MCP/rescue 已落地；升级拦截器未做 |
 
-> v0.1 现状：PowerShell 单文件原型，验证"检测逻辑可行"，不是最终形态。
+> v0.1 现状注记（已过时）：PowerShell 单文件原型，验证"检测逻辑可行"。
 
 ---
 

@@ -12,3 +12,6 @@ desktop.ini
 # build artifacts (distributed through GitHub Releases)
 dist/release/
 
+# Rust build output
+doctor-sys/target/
+
