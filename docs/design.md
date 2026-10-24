@@ -363,7 +363,7 @@ L3 的实现：
 | P1 | core：检测器 + 修复器 + 快照（TS） | 现有 PowerShell 原型的检测逻辑迁移 | 进行中（插件 `plugin/lib/index.js` 承担；**v0.12.0 起 ACL/外壳动作经 `DSH_DOCTOR_SYS` 优先走 doctor-sys，PS 兜底**） |
 | P2 | 守护进程 + 原生通知（§5） | 杀 DSH 进程 → 10 s 内收到气泡 | `tools/watch.mjs` 原型；**v0.12.0 起气泡优先走 doctor-sys notify**；安装向导/自启未做 |
 | P3 | DSH 插件面板（sidebar.panellist + main） | 面板能扫描、能修、能回滚 | **已落地**（`plugin/lib/client.js`） |
-| P4 | MCP + rescue + 升级拦截器 | 外部 agent 能调通 4 个只读工具 | MCP/rescue 已落地；升级拦截器未做 |
+| P4 | MCP + rescue + 升级拦截器 | 外部 agent 能调通 4 个只读工具 | MCP/rescue 已落地；**v0.13.0 起 MCP 新增 `doctor_sys` 代理引擎原语表（读直通 / 写两段式 token）**；升级拦截器未做 |
 
 > v0.1 现状注记（已过时）：PowerShell 单文件原型，验证"检测逻辑可行"。
 

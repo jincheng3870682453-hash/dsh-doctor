@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-10-24 · 当前版本 **v0.12.0** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-10-24 · 当前版本 **v0.13.0** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 
@@ -21,7 +21,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 
 | 项 | 值 |
 |---|---|
-| 最新 Release | `v0.12.0`（5 个资产：exe / doctor-sys.exe / unix tar / 环境包 / 插件 zip） |
+| 最新 Release | `v0.13.0`（5 个资产：exe / doctor-sys.exe / unix tar / 环境包 / 插件 zip） |
 | 插件版本 | `plugin/package.json` → 0.11.1 |
 | 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
@@ -38,8 +38,8 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | `plugin/` | **核心插件**：`lib/index.js`（host ~2100 行）、`lib/client.js`（面板）、`lib/scan-worker.mjs`（后台扫描线程）、`locale/*.json`、`cordis.patch.yml`、`icon.svg`、`package.json`（声明 `dsh.bundle.patch`） |
 | `doctor-sys/` | **Rust 底层原语引擎**（设计文档 D1/§9 的 P0 落地）：零第三方依赖、静态单文件、JSON over stdio、15 个原语 + selftest。协议与实测坑见 `doctor-sys/README.md` |
 | `tools/cli.mjs` | 跨平台菜单式 CLI（scan/fix/history/rescue/report/diff） |
-| `tools/mcp.mjs` | stdio MCP server（doctor_scan / doctor_history / doctor_fix / doctor_rescue） |
-| `tools/watch.mjs` | 外部守护脚本（Windows 气泡通知） |
+| `tools/mcp.mjs` | stdio MCP server（doctor_scan / doctor_history / doctor_fix / doctor_rescue / doctor_sys_list / doctor_sys） |
+| `tools/watch.mjs` | 外部守护脚本（Windows 气泡通知，引擎优先） |
 | `tools/build.ps1` | 构建 Windows EXE（C# 启动器内嵌 PowerShell）+ Unix 包 + 插件 zip |
 | `tools/package-unix.sh` | 打 Linux/macOS 包（核心发布为 `index.mjs`，避免 CJS 误判） |
 | `tools/push.mjs` | 用 GitHub REST Git Data API 推提交（本机 `github.com:443` 不可达，`api.github.com` 可用） |
@@ -143,6 +143,8 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 29 | 救援多实例互斥（rescue.lock，3 分钟过期） | 已实现 | `rescueWeb` 包 acquire/release；锁建不起来不拦逃生（fail-open） |
 | 30 | 插件 ACL/外壳动作桥接 doctor-sys（P1） | 已实现 | `DSH_DOCTOR_SYS` 指向 exe 时 `aclSddl` / `fixDesktopLabelUnlocked` / `refreshShellIcons` 优先走引擎，PowerShell 兜底；`tests/bridge.test.mjs` 进 CI ubuntu |
 | 31 | watch.mjs 气泡走引擎 notify | 已实现 | `enginePath()`：`DSH_DOCTOR_SYS` 或仓库 cargo 产物优先，WinForms 兜底 |
+| 32 | MCP 代理引擎原语表 | 已实现 | `doctor_sys_list` + `doctor_sys`：读原语直通，写原语 dryRun+一次性 token 两段式（5 分钟过期、参数须一致）；`tests/mcp.test.mjs` 进 CI（ubuntu 无引擎路径 + windows 有引擎路径）；serverInfo 版本改为跟 package.json |
+| 33 | npm 上架 | 包已备好待发 | 包名 **dsh-doctor-plugin**（`dsh-doctor` 已被第三方同名包占用：npm 上的 astra3294/dsh-doctor 0.4.3，同领域撞名，注意甄别）；`plugin/package.json` 已发布化；只差 `npm login` 后 `npm publish`（在 plugin/ 目录） |
 
 ---
 
@@ -251,7 +253,7 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 | 风险 | 说明 | 建议 |
 |---|---|---|
 | macOS / Linux 未实机验证 | 只有 Windows 真机跑过 | 找真机跑 Unix 包，补 CI 覆盖不到的部分 |
-| 没有上架 npm | 只能本地目录/GitHub 安装 | 有 npm 账号可发布 `dsh-doctor` |
+| npm 包待发布 | 包名定 `dsh-doctor-plugin`（`dsh-doctor` 被 npm 上第三方同名包 astra3294/dsh-doctor 占用，同领域撞名，注意甄别） | `cd plugin && npm login && npm publish`；发布后补 README 安装文档 |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑（v0.12.0 起气泡优先走引擎 notify） | 做安装向导（自启/托盘/卸载） |
 | AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | `doctor-sys.exe notify` 原语 + watch.mjs 已接（v0.12.0）；沙箱内被 UIPI 拒，如实返回 shown:false |

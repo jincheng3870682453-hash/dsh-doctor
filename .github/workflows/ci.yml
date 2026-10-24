@@ -71,6 +71,11 @@ jobs:
           $out = ./doctor-sys/target/release/doctor-sys.exe selftest | ConvertFrom-Json
           if (-not $out.data.ok) { throw 'doctor-sys selftest failed' }
           Write-Host 'doctor-sys selftest ok'
+      - name: MCP stdio regression (engine-present paths)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          node tests/mcp.test.mjs
       - name: Write-primitive smoke (runner has a normal desktop context)
         shell: pwsh
         run: |
@@ -136,6 +141,10 @@ jobs:
       - name: Low-label pattern matrix (SDDL truth table)
         shell: bash
         run: node tests/label-pattern.test.mjs
+
+      - name: MCP stdio regression (engine-missing paths)
+        shell: bash
+        run: node tests/mcp.test.mjs
 
   stress:
     name: stress · 30 scans

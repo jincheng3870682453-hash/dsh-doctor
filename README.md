@@ -10,7 +10,7 @@
 
 [**更新记录**](UPDATES.md) · [参与贡献](CONTRIBUTING.md) · [Bug 图鉴](bugs/README.md) · [修复清单](docs/fixable.md)
 
-[![Version](https://img.shields.io/badge/Version-0.12.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.13.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -130,6 +130,7 @@ node dsh-doctor.mjs fix workspace-entry
 | [docs/traps.md](docs/traps.md) | 踩雷清单 14 类，含根因与手工修复 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |
 | [doctor-sys/README.md](doctor-sys/README.md) | **Rust 原语引擎**：协议、15 个原语、实测出来的 Windows 硬规则 |
+| [tools/mcp.mjs](tools/mcp.mjs) | **MCP 面**：外部 agent 受控调用（体检/修复/引擎原语，写操作两段式确认） |
 | [docs/design.md](docs/design.md) | 架构、版本无关性、通知与逃生设计 |
 | [bugs/](bugs/README.md) | **Bug 图鉴**：遇到过的问题 + 根因 + 修法 + 验证 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 参与贡献：怎么提 bug、写检查包、提 PR |

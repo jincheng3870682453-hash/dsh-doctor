@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.13.0 — 2026-10-24
+
+- **MCP 代理引擎原语表（设计 §10 的"外部 agent"一层补全）**：
+  - 新工具 `doctor_sys_list`（原语表 + 引擎可用性）和 `doctor_sys`（调原语）；
+  - 读原语（acl-read / proc-list / port-probe / port-pid / selftest / version）直通；
+  - 写原语（ACL 修改 / 隔离 / 快照 / 杀树 / 通知 / 外壳刷新）走**两段式**：
+    第一次调用只回 dryRun 计划 + 一次性 token（5 分钟过期），带 `confirm: <token>`
+    重复**完全相同**的调用才执行；token 单次有效，重放回到 dryRun；
+  - 没有新 shell 通道：原语表是封闭白名单，未知 op 一律拒绝；
+  - 修了 MCP `serverInfo.version` 硬编码 0.4.1 的陈旧问题（改为跟 plugin/package.json）；
+  - `tests/mcp.test.mjs` stdio 回归（10 项断言）：CI ubuntu 验无引擎路径、Windows 验有引擎路径。
+- **npm 上架准备**：插件包发布化为 **`dsh-doctor-plugin`**——npm 上的 `dsh-doctor` 名字
+  已被第三方同名包占用（astra3294/dsh-doctor 0.4.3，同领域撞名，非本项目）。
+  `plugin/package.json` 去 private、补 repository/license/keywords、新增包级 README；
+  `npm pack` 验证 8 文件 38 KB。发布只差 `npm login` + `npm publish`（见 HANDOFF 风险表）。
+
 ## v0.12.0 — 2026-10-24
 
 - **插件 ACL/外壳动作桥接 doctor-sys（P1）**：设 `DSH_DOCTOR_SYS` 指向引擎 exe 后，
