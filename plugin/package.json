@@ -1,0 +1,26 @@
+{
+  "name": "dsh-doctor",
+  "version": "0.10.0",
+  "private": true,
+  "description": "DSH 私人医生：检查并一键修复桌面端在 Windows 上踩过的坑（桌面图标变白/闪烁、工作区注册在桌面、profile 宿主包重复、启动崩溃）",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["lib/index.js", "lib/client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}
+
