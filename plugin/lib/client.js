@@ -8,7 +8,7 @@
  * 硬约束：任何渲染/请求失败都必须退化成"看得懂的提示"，绝不让侧边栏或面板整块消失。
  */
 window.__ModuleLoader__.load({
-	id: 'dsh-doctor',
+	id: 'dsh-doctor-plugin',
 	factory: (require) => {
 		const module = { exports: {} }
 		const exports = module.exports

@@ -650,6 +650,7 @@ const DETECTORS = {
 	'workspace-not-writable': () => checkWorkspaceWritability(),
 	'workspace-not-grantable': () => checkWorkspaceGrantability(),
 	'zombie-dsh-process': () => checkZombieProcesses(),
+	'bundle-identity-drift': () => checkBundleIdentityDrift(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -754,6 +755,7 @@ function scan() {
 		checkWorkspaceWritability,
 		checkWorkspaceGrantability,
 		checkZombieProcesses,
+		checkBundleIdentityDrift,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -1604,6 +1606,66 @@ function listDshWebProcesses() {
 	} catch (error) {
 		return []
 	}
+}
+
+/** 读一个包的 clients 导出路径（exports["./client"]）。 */
+function clientExportPath(installed) {
+	const exp = installed.exports
+	if (exp === null || typeof exp !== 'object') return null
+	const entry = exp['./client']
+	if (typeof entry === 'string') return entry
+	if (entry !== null && typeof entry === 'object' && typeof entry.default === 'string') return entry.default
+	return null
+}
+
+/**
+ * 依赖名 / 包名 / 客户端模块 id 必须三者一致。
+ * 改了 npm 包名却忘了同步 cordis.patch.yml 的 name 或 client.js 里的
+ * `window.__ModuleLoader__.load({ id })` 时：宿主半边还能跑（接口正常），
+ * 浏览器半边却会静默不注册——表现就是侧边栏图标和面板"被挤掉了"。
+ */
+function checkBundleIdentityDrift() {
+	const findings = []
+	const profilesRoot = join(dshHome(), 'profiles')
+	for (const profileName of readDirNames(profilesRoot)) {
+		if (profileName.includes('.stale')) continue
+		const profileDir = join(profilesRoot, profileName)
+		const pkg = readJson(join(profileDir, 'package.json'))
+		if (pkg === null || pkg.dependencies === undefined || pkg.dependencies === null) continue
+		for (const depName of Object.keys(pkg.dependencies)) {
+			const packageDir = join(profileDir, 'node_modules', depName)
+			const installed = readJson(join(packageDir, 'package.json'))
+			if (installed === null || typeof installed.name !== 'string') continue
+
+			if (installed.name !== depName) {
+				findings.push(finding('bundle-identity-drift', 'high',
+					'依赖名与包名不一致：' + depName,
+					'profile「' + profileName + '」的依赖叫 `' + depName + '`，安装包却自称 `' + installed.name + '`。'
+						+ 'DSH 用包名标识客户端模块：名字不一致时，宿主插件照常加载（接口、体检都正常），'
+						+ '但侧边栏图标和面板不会注册。修复：`name:` 与依赖名对齐，重新装一次 bundle。',
+					packageDir, null))
+				continue
+			}
+
+			const decl = installed.dsh !== undefined && installed.dsh !== null && installed.dsh.client !== undefined ? installed.dsh.client : null
+			if (decl === null) continue
+			const clientRel = clientExportPath(installed)
+			if (clientRel === null) continue
+			const clientFile = join(packageDir, clientRel)
+			let source = ''
+			try { source = readFileSync(clientFile, 'utf8').slice(0, 4096) } catch (error) { continue }
+			const match = /__ModuleLoader__\.load\(\{\s*id:\s*['"]([^'"]+)['"]/.exec(source)
+			if (match !== null && match[1] !== depName) {
+				findings.push(finding('bundle-identity-drift', 'high',
+					'客户端模块 id 与包名不一致：' + depName,
+					'`' + clientFile + '` 注册的模块 id 是 `' + match[1] + '`，包名却是 `' + installed.name + '`。'
+						+ '这种不一致在宿主侧看不出来，但浏览器半边会静默失败——侧边栏图标、面板全部消失。'
+						+ '修复：把 id 改成包名，再重新安装 bundle。',
+					clientFile, null))
+			}
+		}
+	}
+	return findings
 }
 
 /** 端口已经没人听、进程却还挂着的残余实例——回收它们，终结无限重载。 */

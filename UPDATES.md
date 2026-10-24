@@ -23,6 +23,14 @@
 
 ---
 
+## v0.13.3 — 2026-10-24
+
+- **修「DSH 更新后插件图标没了」**：不是 DSH 挤掉的——我们上 npm 时把包名改成 `dsh-doctor-plugin`，但 patch 行和客户端模块 id 还是旧名，浏览器半边静默不注册。已全部对齐并重装，图标/面板恢复。
+- **新增体检项 `bundle-identity-drift`**：依赖名、包名、客户端模块 id 三者不一致直接报高危，以后这类问题当场就能查出来。
+- 已发布 npm：`dsh-doctor-plugin@0.13.3`（latest）。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.3)
+
 ## v0.13.2 — 2026-10-24
 
 - 已发布 npm：`dsh-doctor-plugin@0.13.2`（latest）。

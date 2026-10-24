@@ -89,6 +89,20 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Directory -Filter '@dee
 
 ## 三、会话格式类
 
+### 15. 改了 npm 包名后，侧边栏图标和面板消失
+
+**症状**：宿主功能还在（`/dsh-doctor/status` 正常、体检能跑），但侧边栏图标和面板"被挤掉了"；插件列表里 bundle 仍显示已启用、无报错。
+
+**根因**：DSh 用**包名**标识浏览器模块（`client-modules`：manifest package name identifies the browser module）。如果只改了 `package.json` 的 `name`（比如为了上 npm 从 `dsh-doctor` 改成 `dsh-doctor-plugin`），而 `cordis.patch.yml` 的 `name` 和 `client.js` 里 `window.__ModuleLoader__.load({ id })` 还是旧名，客户端半边会**静默不注册**——宿主半边不受影响，所以看起来"插件还在，只是图标没了"。
+
+**一击修复**：
+
+1. `cordis.patch.yml`：`id` 与 `name` 改成当前包名；
+2. `lib/client.js`：`window.__ModuleLoader__.load({ id: '<当前包名>' })`；
+3. 重装 bundle（旧的先移除，再装新目录/包名）；
+4. 验证：客户端 Slots 里 `sidebar.panellist` 和 `main` 都应出现你的 id。
+
+**自检**：`npm pkg get name` 与 patch 行、client id 三者必须一致。
 ### 8. `format v4 message requires a producer-owned source kind`
 
 **症状**：每轮对话都炸，新会话也炸。

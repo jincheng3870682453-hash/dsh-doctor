@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.13.3 — 2026-10-24
+
+**修「DSH 更新后插件图标被挤掉」的真正原因**：不是 DSH 挤掉，是我们改了 npm 包名（`dsh-doctor` → `dsh-doctor-plugin`）但标识没同步。
+
+- DSH 客户端模块用**包名**标识浏览器模块（`client-modules`：manifest package name identifies the browser module）。
+- 旧状态：`package.json.name = dsh-doctor-plugin`，但 `cordis.patch.yml` 的 `id/name` 和 `client.js` 的 `__ModuleLoader__.load({ id })` 还是 `dsh-doctor` → 宿主半边正常（接口/体检都能跑），浏览器半边静默不注册 → 侧边栏图标和面板消失、插件列表却显示"已启用无报错"。
+- 修复：`cordis.patch.yml` 改为 `id/name: dsh-doctor-plugin`；`client.js` 模块 id 改为包名；移除旧 bundle 后按新包名重装。
+- **新增检查 `bundle-identity-drift`**：依赖名 ≠ 包名、或 client 模块 id ≠ 包名时直接报高危，以后这类漂移会被医生当场抓住。
+- 新增 Bug 图鉴 #11、traps #15、catalog 第 13 项。
+
 ## v0.13.2 — 2026-10-24
 
 修外部评审提出的 14 条（逐条核验后处理）：

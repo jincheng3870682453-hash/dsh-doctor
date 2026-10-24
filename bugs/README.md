@@ -14,5 +14,6 @@
 | [08](08-packaging-and-launcher.md) | 发行包 / 启动器 | 自伤 bug |
 | [09](09-auto-guard-and-processes.md) | 自动巡检 / 进程回收 | 自伤 bug |
 | [10](10-notifications-and-update.md) | 通知归因 / 更新检查 | 自伤 bug |
+| [11](11-bundle-identity-drift.md) | 改包名后图标/面板消失 | 自伤 bug |
 
 > 判断标准：**"DSH 引起"** = 不装医生就会中招；**"自伤 bug"** = 医生自己写出来的坑，修复后通常还会写进 CI 防止复发。
