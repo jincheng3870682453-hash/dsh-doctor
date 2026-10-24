@@ -10,6 +10,8 @@
 
 本次比对结论（rc.2 → rc.3）：新增包只有 `@deepseek-ai/dsh-client-ui-entry-customization`（界面自定义 More 菜单），无删除；296 个包统一升到 rc.3；新增 3 个客户端插槽（`sidebar.panellist.actions`、`conversation.session.header.views.actions`、`sidebar.right.tab.guide.actions`）；base/plugin-manager/session-format/renderer 代码未变。
 
+- 文档重整：README 首屏改为「坏了直接下急救包」，安装细节移到 `docs/install.md`；`bugs/unverified.md` 新增 12 条疑似未验证问题；subagent 插件升到 rc.3。
+
 ## v0.13.3 — 2026-10-24
 
 **修「DSH 更新后插件图标被挤掉」的真正原因**：不是 DSH 挤掉，是我们改了 npm 包名（`dsh-doctor` → `dsh-doctor-plugin`）但标识没同步。

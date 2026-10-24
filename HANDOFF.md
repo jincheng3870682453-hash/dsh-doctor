@@ -38,6 +38,9 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 |---|---|
 | `plugin/` | **核心插件**：`lib/index.js`（host ~2100 行）、`lib/client.js`（面板）、`lib/scan-worker.mjs`（后台扫描线程）、`locale/*.json`、`cordis.patch.yml`、`icon.svg`、`package.json`（声明 `dsh.bundle.patch`） |
 | `doctor-sys/` | **Rust 底层原语引擎**（设计文档 D1/§9 的 P0 落地）：零第三方依赖、静态单文件、JSON over stdio、15 个原语 + selftest。协议与实测坑见 `doctor-sys/README.md` |
+| `docs/install.md` | 安装方式详解（npm / 本地 zip / 命令行 / AI + 桌面端限制） |
+| `docs/fixable.md` / `docs/traps.md` / `docs/catalog.md` / `docs/baseline.md` / `docs/protocol.md` / `docs/design.md` | 修复清单 / 踩雷 / 修复目录 / 差异基线 / 检查包协议 / 架构设计 |
+| `bugs/` | Bug 图鉴：`01`–`11` 已确认；`unverified.md` 是**疑似未验证清单**（排雷线索，不当结论用） |
 | `tools/cli.mjs` | 跨平台菜单式 CLI（scan/fix/history/rescue/report/diff） |
 | `tools/mcp.mjs` | stdio MCP server（doctor_scan / doctor_history / doctor_fix / doctor_rescue / doctor_sys_list / doctor_sys） |
 | `tools/watch.mjs` | 外部守护脚本（Windows 气泡通知，引擎优先） |
@@ -258,6 +261,8 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 | 风险 | 说明 | 建议 |
 |---|---|---|
 | macOS / Linux 未实机验证 | 只有 Windows 真机跑过 | 找真机跑 Unix 包，补 CI 覆盖不到的部分 |
+| 升级官方插件会带回宿主包副本 | 本次把 subagent 插件 rc.1→rc.3 后，profile 里出现 `schemastery` 副本（医生当场报 `profile-host-duplicate`） | 装/升级插件后立刻体检一次；`profile-host-dup` 修 |
+| 疑似问题清单 | `bugs/unverified.md` 12 条待复现（第三方 id 漂移、npm 装完不启用、macOS 包、锁竞态等） | 有现场后按图鉴格式转正 |
 | npm 发布流程（可复用） | 账号用**安全密钥型 2FA**：非 TTY 下 npm 把认证 URL 打码，必须用持久终端跑 `npm publish --access public --auth-type=web`，按 ENTER 开浏览器完成安全密钥验证 | 记录：旧号 `jinchengszj` 被冻（未解冻也不影响发布）；发布账号 `jinchengszj123`；`npm pack --dry-run` 必须包含 `lib/scan-worker.mjs`（9 文件） |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑（v0.12.0 起气泡优先走引擎 notify） | 做安装向导（自启/托盘/卸载） |

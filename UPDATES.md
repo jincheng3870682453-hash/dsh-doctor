@@ -30,6 +30,8 @@
   - `bundle-version-skew`：官方插件固定在旧版本（本机 `subagent-codex` / `subagent-claude-code` 还是 rc.1）→ 报"插件还在列表里但功能不工作"；
   - `runtime-metadata-stale`：`runtime.json` 版本没跟着桌面端更新（本机仍写 rc.2）→ 报出来，避免版本判断错位。
 - 审计工具：`tools/snapshot-asar.mjs` + `tools/diff-asar-snapshots.mjs`，下次更新一条命令复现比对。
+- **文档重整**：README 首屏改成「DSH 坏了 → 直接下急救包」，从 167 行压到 70 行；安装细节移到 `docs/install.md`；`bugs/` 新增「疑似未验证清单」（12 条排雷线索）。
+- 顺手把 `subagent-codex` / `subagent-claude-code` 从 rc.1 升到 rc.3（升级会带回 `schemastery` 副本，医生已当场修掉）。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.4)
 
