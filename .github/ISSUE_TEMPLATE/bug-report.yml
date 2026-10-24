@@ -1,0 +1,119 @@
+name: 报个 Bug
+description: 跑体检/修复时出错，或 DSH 又踩了新坑。填得越全，定位越快。
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。**请先看 [修复清单](https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/docs/fixable.md)**——很多问题点一下就能修，不用等回复。
+
+        三条硬性要求：
+        1. 报错贴**完整原文**，不要只贴一句；
+        2. 附一份**诊断报告**（下面有生成方法，报告已自动脱敏）；
+        3. 提之前**自己扫一眼报告**，确认没有想保留的隐私。
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 你看到了什么
+      description: 现象 + 复现步骤（做了什么之后出现的）。有截图直接拖进来。
+      placeholder: |
+        例：双击 DSH 图标没反应，任务管理器里有进程；或者桌面图标全变白，重启也不恢复。
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本
+      description: 设置 → 关于 里看，或命令行 `dsh --version`。EXE 环境不需要填，写"仅 EXE"即可。
+      placeholder: 0.2.1-rc.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS（请在下文补充版本）
+        - Linux（请在下文补充发行版）
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 这个工具你是怎么装的
+      options:
+        - 插件：npm 包名 dsh-doctor-plugin
+        - 插件：本地目录 / dsh-doctor-plugin.zip
+        - Windows EXE（dsh-doctor.exe）
+        - 环境包（自带 node.exe）
+        - Unix 包（macOS / Linux tar.gz）
+        - MCP（tools/mcp.mjs）
+        - 还没装，只是想反馈 DSH 的问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: plugins
+    attributes:
+      label: 插件清单与冲突
+      description: 装了哪些 DSH 插件？有没有哪个插件一装就出问题、或者和别的插件打架？把名字写全（`@scope/name` 最好）。
+      placeholder: |
+        已装：@deepseek-ai/dsh-tools、我对了、xxx-helper
+        冲突：装 xxx-helper 之后开始报错；禁用后恢复
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: 报错原文
+      description: 完整粘贴，包括堆栈、`DesktopHostFatalError`、`grantWrite (Win32 5)` 之类。不要只贴一句。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: 诊断报告（已脱敏，强烈建议附上）
+      description: |
+        **怎么生成（三选一）**：
+        - 插件面板 → 页脚「环境差异报告」→ 桌面得到 `dsh-doctor-环境差异-<时间>.md`；
+        - 桌面端报废时：`dsh-doctor.exe diff`，或双击 EXE 选菜单 `8`；
+        - 命令行：`node dsh-doctor.mjs diff`。
+
+        把 MD **整个内容**贴到这里。报告会自动把用户名 / 主机名 / 邮箱 / 用户主目录替换成 `user`、`<machine>`、`user@example.com`，非用户目录路径会保留。
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 已经试过什么
+      description: 一键修复、重启、重装插件、换工作区……做了什么、结果如何。
+      placeholder: |
+        点了「一键修复 desktop-label」，提示成功但图标还是白；
+        重启 DSH 后恢复，过一会儿又白。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 自查清单
+      options:
+        - label: 我已经先看过修复清单，确认不是点一下就能修的问题
+          required: true
+        - label: 报告里的隐私我已经扫过（用户名/邮箱/路径）
+          required: true
+        - label: 我搜过现有 issue，没有重复
+          required: false

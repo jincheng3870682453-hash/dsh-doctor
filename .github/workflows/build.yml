@@ -1,0 +1,198 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctorsys:
+    name: build · Rust doctor-sys.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build doctor-sys.exe (zero-dependency, offline)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'cargo not found on runner' }
+          cargo build --release --manifest-path doctor-sys/Cargo.toml
+      - name: Unit tests (JSON parser)
+        shell: pwsh
+        run: cargo test --release --manifest-path doctor-sys/Cargo.toml
+      - name: Selftest (acl-read / port-probe / proc-list)
+        shell: pwsh
+        run: ./doctor-sys/target/release/doctor-sys.exe selftest
+      - name: Read-only probe (acl-read on the home dir)
+        shell: pwsh
+        run: |
+          $output = ./doctor-sys/target/release/doctor-sys.exe acl-read --path $env:USERPROFILE | ConvertFrom-Json
+          if (-not $output.ok -or -not $output.data.sddl) { throw 'acl-read probe failed' }
+          Write-Host 'acl-read probe ok'
+      - name: Bridged fix end-to-end (engine-first, PS fallback, honest verify)
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path './doctor-sys/target/release/doctor-sys.exe').Path
+          $fake = Join-Path $env:RUNNER_TEMP 'bridge-home'
+          New-Item -ItemType Directory -Force -Path "$fake/profileuser/Desktop", "$fake/dsh" | Out-Null
+          Set-Content "$fake/profileuser/Desktop/x.txt" 'x'
+          & $exe set-integrity-label --path "$fake/profileuser/Desktop" --label low | Out-Null
+          $env:DSH_HOME = "$fake/dsh"
+          $env:USERPROFILE = "$fake/profileuser"
+          $env:DSH_DOCTOR_SYS = $exe
+          node tools/cli.mjs fix desktop-label
+          if ($LASTEXITCODE -ne 0) { throw 'cli fix exited nonzero' }
+          $after = & $exe acl-read --path "$fake/profileuser/Desktop" | ConvertFrom-Json
+          if ($after.data.integrity -ne 'medium') { throw ('label not medium after fix: ' + $after.data.integrity) }
+          Write-Host 'bridged fix e2e ok (engine-first)'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-sys
+          path: doctor-sys/target/release/doctor-sys.exe
+
+  windows:
+    name: build · Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dsh-doctor.exe
+        shell: pwsh
+        # Rust 引擎由 doctorsys job 单独构建（避免两处 cargo 版本/产物不一致）。
+        run: ./tools/build.ps1 -SkipDoctorSys
+      - name: Run the built EXE
+        shell: pwsh
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:DSH_HOME | Out-Null
+          ./dist/release/dsh-doctor.exe scan
+      - name: Run the environment diff mode
+        shell: pwsh
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          $output = ./dist/release/dsh-doctor.exe diff | Out-String
+          if ($output -notmatch 'DSH 环境差异报告') { throw 'diff mode produced no report' }
+          if ($output -notmatch '环境快照') { throw 'diff mode report missing snapshot section' }
+          Write-Host 'diff mode ok'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-windows
+          path: dist/release/dsh-doctor.exe
+
+  unix:
+    name: build · Unix tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build dsh-doctor-unix.tar.gz
+        shell: bash
+        run: bash tools/package-unix.sh
+      - name: Run the packaged CLI from the tarball
+        shell: bash
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          set -euo pipefail
+          mkdir -p "$DSH_HOME" "$RUNNER_TEMP/unpack"
+          tar -xzf dist/release/dsh-doctor-unix.tar.gz -C "$RUNNER_TEMP/unpack"
+          sh "$RUNNER_TEMP/unpack/dsh-doctor.sh" scan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-unix
+          path: dist/release/dsh-doctor-unix.tar.gz
+
+  pluginpack:
+    name: build · plugin bundle zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip the plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          cd plugin
+          zip -r ../dist/release/dsh-doctor-plugin.zip . -x 'node_modules/*'
+      - name: Sanity check the zip
+        shell: bash
+        run: |
+          unzip -l dist/release/dsh-doctor-plugin.zip | head -20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-pluginzip
+          path: dist/release/dsh-doctor-plugin.zip
+
+  envpack:
+    name: build · Windows environment pack (node inside)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download portable Node
+        shell: pwsh
+        run: |
+          $version = 'v20.18.0'
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/$version/node-$version-win-x64.zip" -OutFile node.zip
+          Expand-Archive -Path node.zip -DestinationPath node -Force
+      - name: Assemble the pack
+        shell: pwsh
+        run: |
+          $pack = 'dist/envpack'
+          New-Item -ItemType Directory -Force -Path "$pack/plugin/lib" | Out-Null
+          $nodeExe = Get-ChildItem -Path node -Recurse -Filter node.exe | Select-Object -First 1
+          Copy-Item $nodeExe.FullName "$pack/node.exe"
+          $cli = [IO.File]::ReadAllText('tools/cli.mjs', [Text.Encoding]::UTF8)
+          $cli = $cli.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.mjs'")
+          $utf8 = New-Object Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText("$pack/dsh-doctor.mjs", $cli, $utf8)
+          Copy-Item 'plugin/lib/index.js' "$pack/plugin/lib/index.mjs"
+          Copy-Item 'plugin/package.json' "$pack/plugin/package.json"
+          # .cmd 不能带 BOM（cmd.exe 会把 BOM 当命令的一部分）。
+          $launcher = "@echo off`r`nchcp 65001 >nul`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n`"%~dp0node.exe`" `"%~dp0dsh-doctor.mjs`" %*`r`necho.`r`npause`r`n"
+          [IO.File]::WriteAllText("$pack/start.cmd", $launcher, $utf8)
+          $readme = "DSH 私人医生 · Windows 环境包`r`n================================`r`n`r`n这个包自带 node.exe，不需要另外安装 Node，也不需要 DSH 能启动。`r`n`r`n用法：`r`n  1. 解压到任意目录（不要放在桌面，避免图标被刷新）；`r`n  2. 双击 start.cmd；`r`n  3. 选 1 体检，或按菜单提示操作。`r`n`r`n命令行：`r`n  node.exe dsh-doctor.mjs scan`r`n  node.exe dsh-doctor.mjs fix workspace-entry`r`n  node.exe dsh-doctor.mjs report`r`n`r`n全部在本机运行，不上传任何数据。`r`n"
+          [IO.File]::WriteAllText("$pack/README.txt", $readme, $utf8)
+          Compress-Archive -Path "$pack/*" -DestinationPath dist/dsh-doctor-env-win-x64.zip -Force
+      - name: Run the environment pack
+        shell: pwsh
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-envpack
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:DSH_HOME | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/envrun | Out-Null
+          Expand-Archive -Path dist/dsh-doctor-env-win-x64.zip -DestinationPath dist/envrun -Force
+          & ./dist/envrun/node.exe ./dist/envrun/dsh-doctor.mjs scan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-doctor-envpack
+          path: dist/dsh-doctor-env-win-x64.zip
+
+  release:
+    name: publish · GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, unix, envpack, pluginpack, doctorsys]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+      - name: List assets
+        run: ls -la dist/release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/dsh-doctor.exe
+            dist/release/doctor-sys.exe
+            dist/release/dsh-doctor-unix.tar.gz
+            dist/release/dsh-doctor-env-win-x64.zip
+            dist/release/dsh-doctor-plugin.zip
+          fail_on_unmatched_files: false
