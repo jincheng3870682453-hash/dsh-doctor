@@ -44,7 +44,7 @@ plugin_manager  install_bundle  target: <本仓库路径>/plugin
 
 **发行包**：[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases) 里按平台取——Windows `dsh-doctor.exe`（自包含，双击即用）；Linux / macOS `dsh-doctor-unix.tar.gz`（需要 Node ≥18）。
 
-**没有 Node 环境？** 用 `dsh-doctor-env-win-x64.zip`：**自带 node.exe**，不需要另外装 Node、也不需要 DSH 能启动——解压后双击「启动.cmd」即可。
+**没有 Node 环境？** 用 `dsh-doctor-env-win-x64.zip`：**自带 node.exe**，不需要另外装 Node、也不需要 DSH 能启动——解压后双击 `start.cmd` 即可。
 
 ```bash
 node dsh-doctor.mjs scan        # 只读体检

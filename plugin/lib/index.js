@@ -512,9 +512,10 @@ function checkWorkspaceWritability() {
 		const target = workspace.path
 		if (!existsSync(target)) continue
 		const probe = join(target, '.dsh-doctor-write-test-' + process.pid + '-' + Date.now() + '.tmp')
+		let wrote = false
 		try {
 			writeFileSync(probe, 'ok', 'utf8')
-			try { unlinkSync(probe) } catch (error) { /* 删不掉不算致命 */ }
+			wrote = true
 		} catch (error) {
 			const message = String(error && error.message ? error.message : error)
 			findings.push(finding('workspace-not-writable', 'high',
@@ -523,6 +524,11 @@ function checkWorkspaceWritability() {
 					+ '。表现就是 DSH 起不来、终端一开就报 grantWrite / EACCES。'
 					+ (isWindows ? '一键修复会给当前账号补上完全控制（先备份 ACL）。' : '请手动检查该目录权限。'),
 				target, isWindows ? 'workspace-acl' : null))
+		} finally {
+			// 无论成败都清理，绝不给用户留垃圾文件。
+			if (wrote) {
+				try { unlinkSync(probe) } catch (error) { /* 删不掉不算致命 */ }
+			}
 		}
 	}
 	return findings
@@ -896,9 +902,10 @@ function fixWorkspaceAcl() {
 		let writable = true
 		try {
 			writeFileSync(probe, 'ok', 'utf8')
-			try { unlinkSync(probe) } catch (error) { /* ignore */ }
 		} catch (error) {
 			writable = false
+		} finally {
+			try { unlinkSync(probe) } catch (error) { /* ignore */ }
 		}
 		if (writable) continue
 		const backupFile = join(backupDir(), 'workspace-acl-' + Date.now() + '.txt')
@@ -907,10 +914,11 @@ function fixWorkspaceAcl() {
 		let verified = false
 		try {
 			writeFileSync(probe, 'ok', 'utf8')
-			try { unlinkSync(probe) } catch (error) { /* ignore */ }
 			verified = true
 		} catch (error) {
 			verified = false
+		} finally {
+			try { unlinkSync(probe) } catch (error) { /* ignore */ }
 		}
 		if (verified) repaired.push(target + (save.ok ? ' (备份 ' + backupFile + ')' : ''))
 		else failed.push(target + '：' + (grant.err || grant.out || '仍然写不进去'))
@@ -1402,6 +1410,10 @@ function fixReapZombies() {
 		if (typeof item.port !== 'number' || typeof item.pid !== 'number') continue
 		if (item.pid === process.pid) continue
 		if (portInUse(item.port)) continue
+		// 杀之前再核一次命令行：防 PID 在扫描与杀之间被系统复用，误杀无关进程。
+		const verify = powershell('$p = Get-CimInstance Win32_Process -Filter "ProcessId=' + item.pid + '"; if ($null -ne $p) { [Console]::Out.Write([string]$p.CommandLine) }')
+		const commandLine = verify.ok ? verify.out : ''
+		if (commandLine.indexOf('--port ' + item.port) < 0 || commandLine.toLowerCase().indexOf('dsh') < 0) continue
 		const result = powershell('Stop-Process -Id ' + item.pid + ' -Force -ErrorAction SilentlyContinue')
 		if (result.ok) killed.push(item.pid)
 	}
@@ -1416,6 +1428,8 @@ function fixReapZombies() {
 function startAutoGuard(ctx) {
 	if (!isWindows || !autoFixEnabled()) return
 	let lastRun = 0
+	let fixCount = 0
+	let windowStart = 0
 	const tick = () => {
 		try {
 			const now = Date.now()
@@ -1428,6 +1442,21 @@ function startAutoGuard(ctx) {
 			const low = /S:\(ML;;[^;]*;;;LW/.test(sddl)
 			const deny = /\(D;[^)]*;;;WD\)/.test(sddl)
 			if (!low && !deny) return
+
+			// 防抖：一小时内最多自动拉回 5 次。超过说明 DSH 在反复改写，
+			// 这时硬拉只会造成反复闪屏，应该让用户去改工作区，而不是和它打乒乓。
+			if (now - windowStart > 3600000) { windowStart = now; fixCount = 0 }
+			if (fixCount >= 5) {
+				appendHistory({
+					at: new Date().toISOString(),
+					id: 'auto-desktop-label', ok: false, changed: false,
+					message: '自动巡检：一小时内已自动修复 5 次，暂停。请把桌面从 DSH 工作区里移走（否则会一直反复）。',
+					backup: null,
+				})
+				return
+			}
+
+			fixCount += 1
 			const result = fixDesktopLabel()
 			appendHistory({
 				at: new Date().toISOString(),
@@ -1437,7 +1466,8 @@ function startAutoGuard(ctx) {
 				message: '自动巡检：' + String(result.message || ''),
 				backup: typeof result.backup === 'string' ? result.backup : null,
 			})
-			if (result.ok === true) refreshShellIcons()
+			// 只有标签被降级（会白图标）才需要刷新外壳；单纯残留拒绝项不必刷。
+			if (result.ok === true && low) refreshShellIcons()
 		} catch (error) { /* 守护自己不许抛 */ }
 	}
 	try {

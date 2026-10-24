@@ -101,6 +101,7 @@ $pluginDir = Join-Path $release 'plugin\lib'
 New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $pluginDir 'index.mjs'),
     [IO.File]::ReadAllText((Join-Path $root 'plugin\lib\index.js'), [Text.Encoding]::UTF8), $utf8NoBom)
+Copy-Item (Join-Path $root 'plugin\package.json') (Join-Path $release 'plugin\package.json') -Force
 Write-Host 'built dsh-doctor.mjs + plugin/lib/index.mjs'
 
 # ── 3) Linux / macOS 外壳（LF 换行，源码在 tools/launcher/）──────────────────
@@ -118,6 +119,7 @@ Copy-Item (Join-Path $release 'dsh-doctor.mjs') $stage -Force
 Copy-Item (Join-Path $release 'dsh-doctor.sh') $stage -Force
 Copy-Item (Join-Path $release 'dsh-doctor.command') $stage -Force
 Copy-Item (Join-Path $pluginDir 'index.mjs') (Join-Path $stage 'plugin\lib\index.mjs') -Force
+Copy-Item (Join-Path $release 'plugin\package.json') (Join-Path $stage 'plugin\package.json') -Force
 & tar -czf (Join-Path $release 'dsh-doctor-unix.tar.gz') -C $stage '.'
 if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Remove-Item -LiteralPath $stage -Recurse -Force
