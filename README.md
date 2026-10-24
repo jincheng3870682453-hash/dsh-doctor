@@ -123,6 +123,7 @@ node dsh-doctor.mjs fix workspace-entry
 | | |
 |---|---|
 | [UPDATES.md](UPDATES.md) | **更新记录**：每个版本带来了什么，以及怎么更新 |
+| [HANDOFF.md](HANDOFF.md) | **交接文档**：给接手的人/Agent，专项清单 + 架构 + 发布手册 + 已知风险 |
 | [docs/fixable.md](docs/fixable.md) | **修复清单**：按症状列出能修 / 只查，以及根因 |
 | [docs/baseline.md](docs/baseline.md) | **环境差异报告**：和标准 DSH 比，差在哪、怎么提交 |
 | [docs/catalog.md](docs/catalog.md) | 修复目录：每条检查 / 备份位置 / 验证方式 |
