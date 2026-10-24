@@ -20,6 +20,9 @@ if ($SkipDoctorSys) {
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
     Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'doctor-sys.exe') -Force
     Write-Host ('built ' + (Join-Path $release 'doctor-sys.exe') + ' (' + [math]::Round((Get-Item (Join-Path $release 'doctor-sys.exe')).Length / 1KB, 1) + ' KB)')
+    # 纯 Rust 原生 CLI（scan/fix）：同一份二进制，换个名字给"不想要 PowerShell"的用户。
+    Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'dsh-doctor-native.exe') -Force
+    Write-Host ('built ' + (Join-Path $release 'dsh-doctor-native.exe') + ' (' + [math]::Round((Get-Item (Join-Path $release 'dsh-doctor-native.exe')).Length / 1KB, 1) + ' KB)')
 } else {
     Write-Host 'cargo not found - skip doctor-sys.exe (CI builds it separately)'
 }

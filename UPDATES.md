@@ -23,6 +23,13 @@
 
 ---
 
+## v0.13.7 — 2026-10-24
+
+- **原生 CLI 来了（P1）**：`dsh-doctor-native.exe` 是纯 Rust 单文件二进制（无 PowerShell、无 Node、无第三方 crate），`scan` 覆盖 8 项检查、`fix` 支持桌面标签 / 宿主包副本 / patch 层恢复。Release 新增该资产。
+- 为什么之前不是纯二进制：检查逻辑在 PS（EXE）和 JS（插件）两边，Rust 只管底层原语；P2 会把剩余修复和会话扫描迁进 Rust，然后替换默认 EXE。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.7)
+
 ## v0.13.6 — 2026-10-24
 
 - **EXE 同步**：上一版的新检查只加在插件(JS)侧，`dsh-doctor.exe`（PowerShell）没有；本版补上并重打 EXE，`dsh-doctor.exe scan` 现在也会直接报 `[High] Sessions run with danger-full-access … 27`。

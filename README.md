@@ -8,7 +8,7 @@
 
 **点一下修复。**
 
-[![Version](https://img.shields.io/badge/Version-0.13.6-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.13.7-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
@@ -27,6 +27,7 @@
 | Windows | **`dsh-doctor.exe`** | 双击 → 选 `1` 体检 / `2` 修桌面图标 / `8` 生成报告 |
 | Windows，连 Node 都没装 | **`dsh-doctor-env-win-x64.zip`** | 解压 → 双击 `start.cmd` |
 | Linux / macOS | **`dsh-doctor-unix.tar.gz`** | 解压 → `./dsh-doctor.sh`（需要 Node ≥18） |
+| 想要纯二进制（不依赖 PowerShell） | **`dsh-doctor-native.exe`** | `scan` / `fix desktop-label`（Rust 原生，P1：8 项检查 + 3 个修复） |
 
 它不依赖 DSH 能不能启动。生成的报告**已自动脱敏**，可以直接提 issue 或丢给任何 AI。
 

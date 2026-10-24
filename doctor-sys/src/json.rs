@@ -54,6 +54,14 @@ impl Json {
         if let Json::Arr(items) = self { Some(items) } else { None }
     }
 
+    pub fn as_object(&self) -> Option<&[(String, Json)]> {
+        if let Json::Obj(pairs) = self { Some(pairs) } else { None }
+    }
+
+    pub fn as_object_mut(&mut self) -> Option<&mut Vec<(String, Json)>> {
+        if let Json::Obj(pairs) = self { Some(pairs) } else { None }
+    }
+
     pub fn str(value: impl Into<String>) -> Json {
         Json::Str(value.into())
     }

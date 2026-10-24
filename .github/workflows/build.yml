@@ -48,10 +48,22 @@ jobs:
           $after = & $exe acl-read --path "$fake/profileuser/Desktop" | ConvertFrom-Json
           if ($after.data.integrity -ne 'medium') { throw ('label not medium after fix: ' + $after.data.integrity) }
           Write-Host 'bridged fix e2e ok (engine-first)'
+      - name: Native CLI smoke (scan --json)
+        shell: pwsh
+        run: |
+          $json = ./doctor-sys/target/release/doctor-sys.exe scan --json
+          $parsed = $json | ConvertFrom-Json
+          if (-not ($parsed -is [array])) { throw 'native scan did not return JSON array' }
+          Write-Host ('native scan ok: ' + $parsed.Count + ' finding(s)')
+      - name: Stage native CLI
+        shell: pwsh
+        run: Copy-Item ./doctor-sys/target/release/doctor-sys.exe ./doctor-sys/target/release/dsh-doctor-native.exe
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-doctor-sys
-          path: doctor-sys/target/release/doctor-sys.exe
+          path: |
+            doctor-sys/target/release/doctor-sys.exe
+            doctor-sys/target/release/dsh-doctor-native.exe
 
   windows:
     name: build · Windows EXE
@@ -191,6 +203,7 @@ jobs:
         with:
           files: |
             dist/release/dsh-doctor.exe
+            dist/release/dsh-doctor-native.exe
             dist/release/doctor-sys.exe
             dist/release/dsh-doctor-unix.tar.gz
             dist/release/dsh-doctor-env-win-x64.zip

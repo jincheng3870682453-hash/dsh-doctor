@@ -1,6 +1,6 @@
 [package]
 name = "doctor-sys"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "dsh-doctor 底层原语引擎：安全描述符 / 完整性标签 / 进程 / 端口 / 外壳刷新 / 原生通知。零第三方依赖，JSON over stdio。"
 

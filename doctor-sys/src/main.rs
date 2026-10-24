@@ -8,6 +8,7 @@
 //! 安全边界：没有 exec、没有 shell——原语表是封闭的动词表（docs/design.md §9）。
 //! 注册表原语 v1 未实现（现有引擎用不到，宁缺毋滥）。
 
+mod doctor;
 mod json;
 mod win;
 
@@ -22,6 +23,17 @@ const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (dsh-doctor doctor-sy
 
 fn main() {
     let mut stdout = std::io::stdout();
+
+    // 原生检查/修复子命令（scan / fix / version），其余参数仍走 JSON 原语协议。
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.len() > 1 {
+        match argv[1].as_str() {
+            "scan" | "fix" | "version" | "--version" | "--help" | "-h" => {
+                std::process::exit(doctor::run(&argv));
+            }
+            _ => {}
+        }
+    }
 
     let (op, args) = match read_request() {
         Ok(parsed) => parsed,
