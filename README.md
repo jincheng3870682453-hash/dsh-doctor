@@ -71,6 +71,13 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 参与贡献：提 bug、写检查包、提 PR |
 | [CHANGELOG.md](CHANGELOG.md) | 技术变更明细 |
 
+## 贡献者
+
+> **作者是学生**：工作日要上课，issue / PR 一般**集中在周末处理**；看到了都会记下，不用急。
+
+- [Relax](CONTRIBUTORS.md#relax)：报告「权限给太多、DSH 把自己文件删了」，促成 [`permission-too-broad`](docs/catalog.md) 检查和 [docs/recovery.md](docs/recovery.md)；
+- [完整名单 & 怎么上榜](CONTRIBUTORS.md)
+
 ## 遇到问题 / 想贡献
 
 - **遇到 bug**：[提 issue](https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new/choose)。模板会要 DSH 版本、操作系统、**插件冲突**、**完整报错**、以及 `dsh-doctor.exe diff` 生成的**已脱敏诊断报告**。
