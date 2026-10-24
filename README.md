@@ -41,16 +41,24 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 
 插件是 **profile 级**的：装一次，该 profile 下所有会话都能用，重启后仍然在。
 
-### 方式一：应用内「添加插件」对话框（推荐，桌面端用这个）
+### 方式一：npm 包名直装（最快）
 
-DSH 侧边栏 → **插件** → **添加**，会弹出标题为 **「添加插件」** 的对话框，说明文字是：
+已发布到 npm：**`dsh-doctor-plugin`**（latest 0.13.1）。
+
+- **应用内**：「添加插件」对话框直接填包名 `dsh-doctor-plugin`，保持默认安装源，点安装；
+- **命令行**：`dsh plugin --profile <name> add dsh-doctor-plugin`；
+- **npm 用户**：`npm install dsh-doctor-plugin`（作为依赖装进项目时）。
+
+> 别装 `dsh-doctor`——那是第三方的同名包（astra3294/dsh-doctor 0.4.3），不是本项目。
+
+### 方式二：本地目录 / 离线安装（npm 不通时）
+
+DSH 侧边栏 → **插件** → **添加**，对话框说明文字是：
 
 > 输入插件的包名、GitHub 仓库地址或本地目录路径。
 
-三种输入都支持，我们这种没上架 npm 的插件用**第三种**：
-
 1. 下载 Release 里的 `dsh-doctor-plugin.zip`，**解压到一个固定目录**，例如 `D:\dsh-doctor-plugin`（别放桌面，免得和图标修复互相干扰）；
-2. 在那个输入框里粘**解压后的绝对目录**：`D:\dsh-doctor-plugin`；
+2. 粘**解压后的绝对目录**：`D:\dsh-doctor-plugin`；
 3. 「安装源」（中国大陆镜像源）对本地目录没有影响，保持默认即可；
 4. 点 **安装**。装完默认启用，侧边栏出现「私人医生」；没立即生效就重启一次 DSH。
 
@@ -62,7 +70,7 @@ DSH 侧边栏 → **插件** → **添加**，会弹出标题为 **「添加插�
 > 桌面端（`desktop` profile）的插件安装由 Electron 应用自己管理，命令行装不了——会提示
 > `profile "desktop" is managed exclusively by the Electron application`。
 
-### 方式二：命令行（web / tui 等非桌面 profile）
+### 方式三：命令行（web / tui 等非桌面 profile）
 
 ```bash
 dsh plugin --profile web add "D:\path\to\dsh-doctor\plugin"
@@ -70,7 +78,7 @@ dsh plugin --profile web add "D:\path\to\dsh-doctor\plugin"
 
 它内部就是 pnpm，接受**包名、本地目录、git 地址、tarball**；装完会自动加进 `dsh.profile.bundles` 并启用。
 
-### 方式三：在会话里让 AI 装
+### 方式四：在会话里让 AI 装
 
 对 AI 说「把这个目录装成插件：`D:\dsh-doctor-plugin`」，它会用 `plugin_manager` 的 `install_bundle` 装。
 

@@ -24,8 +24,9 @@
 
 ## v0.13.1 — 2026-10-24
 
+- **已上架 npm**：`dsh-doctor-plugin@0.13.1`（latest）。DSH「添加插件」对话框直接填包名即可装；命令行 `dsh plugin --profile <name> add dsh-doctor-plugin`；`npm install dsh-doctor-plugin` 也行。别装 `dsh-doctor`——那是第三方的同名包。
 - **修掉一个上架前必炸的打包 bug**：npm 包里漏了 `lib/scan-worker.mjs`，从 npm 装上后插件会退回同步扫描（卡界面）。现在 `npm pack` 9 个文件，worker 在包里。
-- npm 账号被临时冻结与代码无关（见 HANDOFF 的 npm 章节），解冻后发布版本用 0.13.1。
+- 旧 npm 账号（`jinchengszj`）被安全自动化临时冻结，与代码无关；发布用的新账号 `jinchengszj123`（安全密钥型 2FA）。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.1)
 

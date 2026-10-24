@@ -144,7 +144,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 30 | 插件 ACL/外壳动作桥接 doctor-sys（P1） | 已实现 | `DSH_DOCTOR_SYS` 指向 exe 时 `aclSddl` / `fixDesktopLabelUnlocked` / `refreshShellIcons` 优先走引擎，PowerShell 兜底；`tests/bridge.test.mjs` 进 CI ubuntu |
 | 31 | watch.mjs 气泡走引擎 notify | 已实现 | `enginePath()`：`DSH_DOCTOR_SYS` 或仓库 cargo 产物优先，WinForms 兜底 |
 | 32 | MCP 代理引擎原语表 | 已实现 | `doctor_sys_list` + `doctor_sys`：读原语直通，写原语 dryRun+一次性 token 两段式（5 分钟过期、参数须一致）；`tests/mcp.test.mjs` 进 CI（ubuntu 无引擎路径 + windows 有引擎路径）；serverInfo 版本改为跟 package.json |
-| 33 | npm 上架 | 包已备好待发 | 包名 **dsh-doctor-plugin**（`dsh-doctor` 已被第三方同名包占用：npm 上的 astra3294/dsh-doctor 0.4.3，同领域撞名，注意甄别）；`plugin/package.json` 已发布化；只差 `npm login` 后 `npm publish`（在 plugin/ 目录） |
+| 33 | npm 上架 | **已发布** | 包名 **`dsh-doctor-plugin`**，latest `0.13.1`，发布账号 `jinchengszj123`（安全密钥型 2FA）。`dsh-doctor` 已被第三方同名包占用（astra3294/dsh-doctor 0.4.3），注意甄别。旧账号 `jinchengszj` 因"新号+新设备登录+首次发布+误用恢复码当 OTP"被 npm 安全自动化临时冻结，与代码无关，可忽略。npm 处理期会短暂显示 `0.0.0-stage` 占位，扫描完成后出现正式版本 |
 
 ---
 
@@ -253,7 +253,7 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 | 风险 | 说明 | 建议 |
 |---|---|---|
 | macOS / Linux 未实机验证 | 只有 Windows 真机跑过 | 找真机跑 Unix 包，补 CI 覆盖不到的部分 |
-| npm 包待发布 | 已登录（jinchengszj）但账号被 npm 临时冻结（安全自动化：新登录+发新包+一次无效 OTP 触发）。解冻后一条命令即发：`cd plugin && npm publish --otp=<6位码>`（账号要求发布级 2FA） | 查账号邮箱里 npm 的冻结说明/走 support；或改用勾了 bypass 2FA 的 Granular Token |
+| npm 发布流程（可复用） | 账号用**安全密钥型 2FA**：非 TTY 下 npm 把认证 URL 打码，必须用持久终端跑 `npm publish --access public --auth-type=web`，按 ENTER 开浏览器完成安全密钥验证 | 记录：旧号 `jinchengszj` 被冻（未解冻也不影响发布）；发布账号 `jinchengszj123`；`npm pack --dry-run` 必须包含 `lib/scan-worker.mjs`（9 文件） |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑（v0.12.0 起气泡优先走引擎 notify） | 做安装向导（自启/托盘/卸载） |
 | AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | `doctor-sys.exe notify` 原语 + watch.mjs 已接（v0.12.0）；沙箱内被 UIPI 拒，如实返回 shown:false |
