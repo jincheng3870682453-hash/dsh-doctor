@@ -22,12 +22,25 @@
 
 ---
 
+## v0.13.1 — 2026-10-24
+
+- **修掉一个上架前必炸的打包 bug**：npm 包里漏了 `lib/scan-worker.mjs`，从 npm 装上后插件会退回同步扫描（卡界面）。现在 `npm pack` 9 个文件，worker 在包里。
+- npm 账号被临时冻结与代码无关（见 HANDOFF 的 npm 章节），解冻后发布版本用 0.13.1。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.1)
+
 ## v0.13.0 — 2026-10-24
 
 - **外部 AI 也能直接动底层了**：MCP 新增 `doctor_sys` 工具，安全地代理 Rust 引擎的 15 个原语——读操作直通，写操作两段式确认（先拿计划，再带一次性凭证执行），全程没有 shell 通道。
 - **插件包准备上 npm**（包名 `dsh-doctor-plugin`；npm 上的 `dsh-doctor` 是别人的同名包，别装错）。上架后「添加插件」对话框直接填包名即装；上架前的安装方式不变。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.0)
+
+## v0.12.0 — 2026-10-24
+
+- 插件开始桥接 Rust 引擎（`DSH_DOCTOR_SYS` 指向 `doctor-sys.exe` 时优先走它，慢路径 PowerShell 兜底）；Low 标签判据修复；修复后 fail-closed 复检；watch 脚本改用引擎原生气泡。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.12.0)
 
 ## v0.11.0 — 2026-10-24
 

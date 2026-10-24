@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.13.1 — 2026-10-24
+
+- **修 npm 包漏文件**：`files` 字段只列了 `lib/index.js` 和 `lib/client.js`，漏掉 `lib/scan-worker.mjs`；从 npm 安装后 worker 线程不可用，会退回同步扫描（正是 v0.9.0 修掉的卡顿问题）。改为 `"lib/"` 整目录打包，`npm pack --dry-run` 复核 9 个文件。
+- 该修复在上架 npm 之前完成；npm 账号冻结与代码无关。
+
 ## v0.13.0 — 2026-10-24
 
 - **MCP 代理引擎原语表（设计 §10 的"外部 agent"一层补全）**：
