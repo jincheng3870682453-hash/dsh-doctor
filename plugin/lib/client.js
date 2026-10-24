@@ -170,6 +170,16 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
+		async function saveDiffReport() {
+			const response = await fetch('/dsh-doctor/diff/save', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: '{}',
+			})
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
 		async function applyFix(id) {
 			const response = await fetch('/dsh-doctor/fix', {
 				method: 'POST',
@@ -366,6 +376,14 @@ window.__ModuleLoader__.load({
 					setToast({ ok: data !== null && data.ok === true, text: String(data !== null && data.message ? data.message : '完成') })
 				}, (reason) => {
 					setToast({ ok: false, text: '保存失败：' + String(reason && reason.message ? reason.message : reason) })
+				})
+			}
+
+			const onDiffReport = () => {
+				saveDiffReport().then((data) => {
+					setToast({ ok: data !== null && data.ok === true, text: String(data !== null && data.message ? data.message : '完成') })
+				}, (reason) => {
+					setToast({ ok: false, text: '生成差异报告失败：' + String(reason && reason.message ? reason.message : reason) })
 				})
 			}
 
@@ -574,6 +592,12 @@ window.__ModuleLoader__.load({
 							+ (Array.isArray(env.profiles) ? env.profiles.join('、') : '')),
 					h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
 						h('span', null, '只修改这几类已知问题；每次修复先备份、改完复检，不动安装目录。'),
+						h('button', {
+							type: 'button',
+							className: 'dshdr-btn',
+							style: { height: '22px', padding: '0 8px', fontSize: '11px' },
+							onClick: onDiffReport,
+						}, '环境差异报告'),
 						h('button', {
 							type: 'button',
 							className: 'dshdr-btn',

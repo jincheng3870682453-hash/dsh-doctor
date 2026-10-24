@@ -32,6 +32,7 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 - **查**：体检 13 项状态，每条带路径与原始证据，默认只读；
 - **修**：一键修复，**先备份 → 改最小 → 立刻复检**，失败就还原；
 - **报**：一键生成**给 AI 的求助报告**（带提示词约束），复制发给任何 AI，或保存到桌面留档；
+- **比**：**环境差异报告**——把本机 DSH 和标准基线逐项对比，差异 + 后端报错写成桌面 MD，可直接提 issue/PR；
 - **逃**：实在修不好，生成桌面交接报告 + 起隔离端口的网页版，让网页版 DSH 接手。
 
 > **零环境也能用**：Windows 用自包含 `dsh-doctor.exe`（不装 Node、不装命令行）；连 Node 都没有，用 `dsh-doctor-env-win-x64.zip`（自带 `node.exe`）。
@@ -79,6 +80,7 @@ node dsh-doctor.mjs fix workspace-entry
 |---|---|
 | [UPDATES.md](UPDATES.md) | **更新记录**：每个版本带来了什么，以及怎么更新 |
 | [docs/fixable.md](docs/fixable.md) | **修复清单**：按症状列出能修 / 只查，以及根因 |
+| [docs/baseline.md](docs/baseline.md) | **环境差异报告**：和标准 DSH 比，差在哪、怎么提交 |
 | [docs/catalog.md](docs/catalog.md) | 修复目录：每条检查 / 备份位置 / 验证方式 |
 | [docs/traps.md](docs/traps.md) | 踩雷清单 14 类，含根因与手工修复 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |

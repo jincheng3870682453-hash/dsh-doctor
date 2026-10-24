@@ -25,6 +25,15 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path $env:DSH_HOME | Out-Null
           ./dist/release/dsh-doctor.exe scan
+      - name: Run the environment diff mode
+        shell: pwsh
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-build
+        run: |
+          $output = ./dist/release/dsh-doctor.exe diff | Out-String
+          if ($output -notmatch 'DSH 环境差异报告') { throw 'diff mode produced no report' }
+          if ($output -notmatch '环境快照') { throw 'diff mode report missing snapshot section' }
+          Write-Host 'diff mode ok'
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-doctor-windows

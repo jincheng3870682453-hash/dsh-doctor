@@ -6,25 +6,26 @@ function Show-RescueBanner {
     Write-Host ''
     Write-Host '   DSH 私人医生 · 急救箱' -ForegroundColor Cyan
     Write-Host '   （独立运行：不需要 DSH，不需要 Node，不需要联网）' -ForegroundColor DarkGray
+    Write-Host '   写文件/改权限请在桌面或资源管理器里双击运行；在 DSH 沙箱终端里跑可能被限制。' -ForegroundColor DarkGray
     Write-Host ''
 }
 
 function Get-RescueBackups {
     $items = New-Object System.Collections.ArrayList
-    $home = Get-DshHome
-    $aclDir = Join-Path $home 'dsh-doctor-backups'
+    $doctorHome = Get-DshHome
+    $aclDir = Join-Path $doctorHome 'dsh-doctor-backups'
     if (Test-Path -LiteralPath $aclDir) {
         foreach ($file in @(Get-ChildItem -LiteralPath $aclDir -Filter 'desktop-acl-*.txt' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
             [void]$items.Add([pscustomobject]@{ Kind = 'acl'; Path = $file.FullName; Label = ('桌面 ACL 备份 · ' + $file.LastWriteTime.ToString('MM-dd HH:mm')) })
         }
     }
-    $storages = Join-Path $home 'storages'
+    $storages = Join-Path $doctorHome 'storages'
     if (Test-Path -LiteralPath $storages) {
         foreach ($file in @(Get-ChildItem -LiteralPath $storages -Filter 'workspace.json.bak-*' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
             [void]$items.Add([pscustomobject]@{ Kind = 'workspace'; Path = $file.FullName; Label = ('工作区注册表备份 · ' + $file.LastWriteTime.ToString('MM-dd HH:mm')) })
         }
     }
-    $profilesRoot = Join-Path $home 'profiles'
+    $profilesRoot = Join-Path $doctorHome 'profiles'
     if (Test-Path -LiteralPath $profilesRoot) {
         foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
             foreach ($file in @(Get-ChildItem -LiteralPath $profile.FullName -Filter 'cordis.patch.yml.bak-*' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
@@ -120,6 +121,243 @@ function Invoke-RescueScan {
     Show-DoctorFindings -Findings $findings
 }
 
+function Get-RescueCrashSummary {
+    $dir = Join-Path $env:APPDATA '@deepseek-ai\dsh-desktop\logs'
+    if (-not (Test-Path -LiteralPath $dir)) {
+        return [pscustomobject]@{ Count = 0; Newest = ''; FirstLine = '' }
+    }
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter 'crash-*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+    $first = ''
+    if ($files.Count -gt 0) {
+        $line = Get-Content -LiteralPath $files[0].FullName -TotalCount 3 -ErrorAction SilentlyContinue |
+            Where-Object { $_.Trim().Length -gt 0 } | Select-Object -First 1
+        if ($null -ne $line) { $first = $line.Trim() }
+    }
+    $newest = ''
+    if ($files.Count -gt 0) { $newest = $files[0].LastWriteTime.ToString('yyyy-MM-dd HH:mm') }
+    return [pscustomobject]@{ Count = $files.Count; Newest = $newest; FirstLine = $first }
+}
+
+function Get-RescueProfileSnapshot {
+    $profilesRoot = Join-Path (Get-DshHome) 'profiles'
+    $result = New-Object System.Collections.ArrayList
+    if (-not (Test-Path -LiteralPath $profilesRoot)) { return $result.ToArray() }
+    foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
+        if ($profile.Name -like '*.stale*') { continue }
+        $bundles = @()
+        $dependencies = @()
+        $pkgFile = Join-Path $profile.FullName 'package.json'
+        if (Test-Path -LiteralPath $pkgFile) {
+            try {
+                $pkg = Get-Content -LiteralPath $pkgFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($null -ne $pkg.dsh -and $null -ne $pkg.dsh.profile -and $null -ne $pkg.dsh.profile.bundles) {
+                    $bundles = @($pkg.dsh.profile.bundles)
+                }
+                if ($null -ne $pkg.dependencies) { $dependencies = @($pkg.dependencies.PSObject.Properties | ForEach-Object { $_.Name }) }
+            } catch { }
+        }
+        $nodeModules = Join-Path $profile.FullName 'node_modules'
+        $topLevel = @()
+        if (Test-Path -LiteralPath $nodeModules) {
+            $topLevel = @(Get-ChildItem -LiteralPath $nodeModules -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+        }
+        [void]$result.Add([pscustomobject]@{ Name = $profile.Name; Bundles = $bundles; Dependencies = $dependencies; TopLevel = $topLevel })
+    }
+    return $result.ToArray()
+}
+
+function Get-RescueWorkspacePaths {
+    $file = Join-Path (Get-DshHome) 'storages\workspace.json'
+    $paths = New-Object System.Collections.ArrayList
+    if (-not (Test-Path -LiteralPath $file)) { return $paths.ToArray() }
+    try {
+        $data = Get-Content -LiteralPath $file -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($null -ne $data.tables -and $null -ne $data.tables.workspaces) {
+            foreach ($property in @($data.tables.workspaces.PSObject.Properties)) {
+                $path = [string]$property.Value.path
+                if (-not [string]::IsNullOrWhiteSpace($path)) { [void]$paths.Add($path) }
+            }
+        }
+    } catch { }
+    return $paths.ToArray()
+}
+
+function Get-RescueRiskyWorkspaceReason {
+    param([string]$Path)
+    $target = $Path.TrimEnd('\', '/').ToLowerInvariant()
+    $doctorHome = [Environment]::GetFolderPath('UserProfile').TrimEnd('\', '/').ToLowerInvariant()
+    $desktop = [Environment]::GetFolderPath('Desktop').TrimEnd('\', '/').ToLowerInvariant()
+    if ($target -eq $doctorHome) { return '用户目录本身' }
+    if ($target -eq $desktop) { return '桌面本身' }
+    if ($target -match '^[a-z]:$') { return '整个盘根' }
+    return ''
+}
+
+function Get-RescueDiffReport {
+    $doctorHome = Get-DshHome
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $profiles = @(Get-RescueProfileSnapshot)
+    $workspaces = @(Get-RescueWorkspacePaths)
+    $crash = Get-RescueCrashSummary
+    $desktopAcl = Get-PathAclInfo -Path $desktop
+    $forbiddenTop = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values')
+    $forbiddenDeps = @('@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-skill', '@deepseek-ai/schemastery', '@deepseek-ai/dsh-util-values', 'schemastery')
+    $guiProfiles = @('desktop', 'web')
+
+    $lines = New-Object System.Collections.ArrayList
+    [void]$lines.Add('# DSH 环境差异报告')
+    [void]$lines.Add('')
+    [void]$lines.Add('> 生成时间：' + (Get-DoctorTimestamp) + '　平台：win32（EXE）')
+    [void]$lines.Add('> 对照基线：内置默认基线（baseline/expected.json）')
+    [void]$lines.Add('')
+    [void]$lines.Add('## 环境快照')
+    [void]$lines.Add('')
+    [void]$lines.Add('- DSH 目录：`' + $doctorHome + '`')
+    [void]$lines.Add('- 桌面：`' + $desktop + '`')
+    [void]$lines.Add('- PowerShell：' + $PSVersionTable.PSVersion.ToString())
+    [void]$lines.Add('- profile：' + (($profiles | ForEach-Object { $_.Name + '(' + $_.Bundles.Count + ' bundles / ' + $_.TopLevel.Count + ' pkgs)' }) -join '、'))
+    [void]$lines.Add('- 工作区：' + $(if ($workspaces.Count -gt 0) { $workspaces -join '；' } else { '无' }))
+    [void]$lines.Add('- 桌面完整性：' + $(if ($desktopAcl.LowLabel) { 'Low（异常）' } else { 'OK' }) + $(if ($desktopAcl.EveryoneDeny) { ' · 有拒绝项' } else { '' }))
+    [void]$lines.Add('- 崩溃日志：' + $crash.Count + ' 个' + $(if ($crash.Newest) { '（最近 ' + $crash.Newest + '）' } else { '' }))
+    [void]$lines.Add('')
+
+    $diffCount = 0
+    [void]$lines.Add('## 与标准基线的差异')
+    [void]$lines.Add('')
+    foreach ($workspace in $workspaces) {
+        $reason = Get-RescueRiskyWorkspaceReason -Path $workspace
+        if ($reason -ne '') {
+            $diffCount += 1
+            [void]$lines.Add('### [high] 工作区注册到了危险位置')
+            [void]$lines.Add('')
+            [void]$lines.Add('「' + $reason + '」被注册为工作区：`' + $workspace + '`')
+            [void]$lines.Add('')
+        }
+    }
+    if ($desktopAcl.LowLabel) {
+        $diffCount += 1
+        [void]$lines.Add('### [high] 桌面被降为低完整性')
+        [void]$lines.Add('')
+        [void]$lines.Add('桌面完整性标签是 Low，Explorer 取不到图标（图标会变白）。')
+        [void]$lines.Add('')
+    }
+    if ($desktopAcl.EveryoneDeny) {
+        $diffCount += 1
+        [void]$lines.Add('### [medium] 桌面残留拒绝删除项')
+        [void]$lines.Add('')
+        [void]$lines.Add('桌面上存在 Everyone 拒绝删除的 ACE。')
+        [void]$lines.Add('')
+    }
+    foreach ($profile in $profiles) {
+        if (($profile.Bundles -notcontains '@deepseek-ai/dsh-base')) {
+            $diffCount += 1
+            [void]$lines.Add('### [medium] profile 缺少标准 bundle')
+            [void]$lines.Add('')
+            [void]$lines.Add('profile「' + $profile.Name + '」缺少：@deepseek-ai/dsh-base')
+            [void]$lines.Add('')
+        }
+        if (($guiProfiles -contains $profile.Name) -and ($profile.Bundles -notcontains '@deepseek-ai/dsh-web-app')) {
+            $diffCount += 1
+            [void]$lines.Add('### [medium] GUI profile 缺少 web-app bundle')
+            [void]$lines.Add('')
+            [void]$lines.Add('profile「' + $profile.Name + '」缺少：@deepseek-ai/dsh-web-app')
+            [void]$lines.Add('')
+        }
+        $badDeps = @($profile.Dependencies | Where-Object { $forbiddenDeps -contains $_ })
+        if ($badDeps.Count -gt 0) {
+            $diffCount += 1
+            [void]$lines.Add('### [medium] profile 依赖里出现宿主包')
+            [void]$lines.Add('')
+            [void]$lines.Add('profile「' + $profile.Name + '」的 dependencies 含：' + ($badDeps -join '、'))
+            [void]$lines.Add('')
+        }
+        $badTop = @($profile.TopLevel | Where-Object { $forbiddenTop -contains $_ })
+        if ($badTop.Count -gt 0) {
+            $diffCount += 1
+            [void]$lines.Add('### [high] profile 里出现宿主包副本')
+            [void]$lines.Add('')
+            [void]$lines.Add('profile「' + $profile.Name + '」的 node_modules 顶层有：' + ($badTop -join '、'))
+            [void]$lines.Add('')
+        }
+    }
+    if ($diffCount -eq 0) { [void]$lines.Add('没有发现差异——这台机器的 DSH 结构与标准基线一致。'); [void]$lines.Add('') }
+
+    [void]$lines.Add('## 后端报错')
+    [void]$lines.Add('')
+    if ($crash.Count -eq 0) {
+        [void]$lines.Add('没有崩溃日志。')
+    } else {
+        [void]$lines.Add('- 崩溃日志数：' + $crash.Count + '，最近：' + $crash.Newest)
+        if ($crash.FirstLine) { [void]$lines.Add('- 最近一次首行：`' + $crash.FirstLine + '`') }
+        [void]$lines.Add('- 完整日志目录：`' + (Join-Path $env:APPDATA '@deepseek-ai\dsh-desktop\logs') + '`')
+    }
+    [void]$lines.Add('')
+    [void]$lines.Add('## 提交方式')
+    [void]$lines.Add('')
+    [void]$lines.Add('1. 想求助：把本文件贴到 issue / 浏览器里的 AI；')
+    [void]$lines.Add('2. 想贡献：按 CONTRIBUTING.md 整理成 bug 图鉴条目或检查包；')
+    [void]$lines.Add('3. 提交地址：https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new')
+    [void]$lines.Add('')
+    [void]$lines.Add('> 注意：本文件含本机路径与用户名，提交前请自行脱敏。')
+    return $lines -join "`n"
+}
+
+function Show-RescueWriteDiagnostics {
+    Write-Host ('user: ' + [Security.Principal.WindowsIdentity]::GetCurrent().Name)
+    Write-Host ('desktop: ' + [Environment]::GetFolderPath('Desktop'))
+    Write-Host ('dsh home: ' + (Get-DshHome))
+    Write-Host ('temp: ' + [IO.Path]::GetTempPath())
+    $probe = Join-Path ([IO.Path]::GetTempPath()) ('doctor-probe-' + [guid]::NewGuid().ToString('N') + '.txt')
+    try { [IO.File]::WriteAllText($probe, 'x'); Write-Host 'temp write: OK'; Remove-Item -LiteralPath $probe -Force } catch { Write-Host ('temp write: FAIL - ' + $_.Exception.Message) }
+    foreach ($name in @('Desktop', 'dsh')) {
+        if ($name -eq 'Desktop') { $dir = [Environment]::GetFolderPath('Desktop') } else { $dir = Join-Path (Get-DshHome) 'dsh-doctor' }
+        $target = Join-Path $dir ('doctor-probe-' + [guid]::NewGuid().ToString('N') + '.txt')
+        try {
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            [IO.File]::WriteAllText($target, 'x')
+            Write-Host ($name + ' write: OK')
+            Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Host ($name + ' write: FAIL - ' + $_.Exception.Message)
+        }
+    }
+}
+
+function Show-RescueDiffReport {
+    $markdown = Get-RescueDiffReport
+    $candidates = @(
+        [Environment]::GetFolderPath('Desktop'),
+        (Join-Path (Get-DshHome) 'dsh-doctor')
+    )
+    $file = ''
+    $errors = @()
+    foreach ($directory in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($directory)) { continue }
+        try {
+            if (-not (Test-Path -LiteralPath $directory)) { New-Item -ItemType Directory -Force -Path $directory | Out-Null }
+            $target = Join-Path $directory ('dsh-doctor-环境差异-' + (Get-Date -Format 'yyyyMMdd-HHmm') + '.md')
+            try {
+                [IO.File]::WriteAllText($target, $markdown, (New-Object Text.UTF8Encoding($false)))
+            } catch {
+                Set-Content -LiteralPath $target -Value $markdown -Encoding UTF8 -ErrorAction Stop
+            }
+            $file = $target
+            break
+        } catch {
+            $errors += ($directory + ' -> ' + $_.Exception.Message)
+        }
+    }
+    if ($file -eq '') {
+        Write-DoctorWarn ('无法写入文件（' + ($errors -join '；') + '），已把报告打印在下面，可手动复制保存。')
+        Write-Host ''
+        Write-Host $markdown
+        return
+    }
+    Write-DoctorInfo ('差异报告已保存到：' + $file)
+    Write-Host ''
+    Write-Host $markdown
+}
+
 function Invoke-RescueMenu {
     while ($true) {
         Show-RescueBanner
@@ -130,6 +368,7 @@ function Invoke-RescueMenu {
         Write-Host '   5) 恢复被清空的 cordis.patch.yml'
         Write-Host '   6) 从备份回滚'
         Write-Host '   7) 起网页版（逃生）'
+        Write-Host '   8) 生成环境差异报告（对照标准 DSH，可提交 issue）'
         Write-Host '   0) 退出'
         Write-Host ''
         $choice = Read-Host '   选择'
@@ -146,6 +385,7 @@ function Invoke-RescueMenu {
                 '5' { Repair-DoctorPatchLayer }
                 '6' { Show-RescueRollbackMenu }
                 '7' { Start-RescueWeb }
+                '8' { Show-RescueDiffReport }
                 '0' { return }
                 default { Write-DoctorWarn '无效的选择。' }
             }
@@ -161,6 +401,10 @@ if ($env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {
     Invoke-RescueScan
 } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix-desktop') {
     Repair-DoctorDesktopLabel
+} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diff') {
+    Show-RescueDiffReport
+} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diag') {
+    Show-RescueWriteDiagnostics
 } else {
     Invoke-RescueMenu
 }

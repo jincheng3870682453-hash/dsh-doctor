@@ -4,6 +4,13 @@
 
 ---
 
+## v0.10.0 — 2026-10-24
+
+- 新增**环境差异报告**：把本机 DSH 和标准基线逐项对比（工作区、profile 依赖、宿主包副本、桌面完整性、崩溃日志），差异 + 后端报错写成一个 MD 到桌面，可直接提 issue/PR。
+- 三个入口都有：插件页脚「环境差异报告」、`node dsh-doctor.mjs diff`、`dsh-doctor.exe diff`（不需要 Node）。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.10.0)
+
 ## v0.9.0 — 2026-10-24
 
 - 体检移到后台线程，不再卡 DSH 界面（有缓存，面板秒开）。

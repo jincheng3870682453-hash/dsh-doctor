@@ -8,7 +8,7 @@
 //   node dsh-doctor.mjs fix workspace-entry --yes
 //   node dsh-doctor.mjs history
 //   node dsh-doctor.mjs rescue
-import { scan, applyFixById, readHistory, rescueWeb, buildAiReport } from '../plugin/lib/index.js'
+import { scan, applyFixById, readHistory, rescueWeb, buildAiReport, buildDiffReport, writeDiffReport } from '../plugin/lib/index.js'
 
 const FIXES = [
 	['desktop-label', '修桌面图标变白（Windows 专用）'],
@@ -70,6 +70,13 @@ async function showHistory() {
 	}
 }
 
+async function showDiffReport() {
+	const file = writeDiffReport()
+	if (file) line('差异报告已保存到桌面：' + file)
+	line('')
+	line(buildDiffReport())
+}
+
 async function menu() {
 	while (true) {
 		line('')
@@ -82,6 +89,7 @@ async function menu() {
 		line('  5) 恢复被清空的 cordis.patch.yml')
 		line('  6) 查看修复录')
 		line('  7) 起网页版（最后一招）')
+		line('  8) 生成环境差异报告（对照标准 DSH，可提交 issue）')
 		line('  0) 退出')
 		hr()
 		const answer = await ask('  选择：')
@@ -95,6 +103,7 @@ async function menu() {
 			else if (choice === '5') await runFix('restore-patch-layer')
 			else if (choice === '6') await showHistory()
 			else if (choice === '7') line(String((await rescueWeb()).message || ''))
+			else if (choice === '8') await showDiffReport()
 			else line('无效的选择。')
 		} catch (error) {
 			line('操作失败：' + String(error && error.message ? error.message : error))
@@ -122,6 +131,7 @@ async function main() {
 	if (command === 'history') { await showHistory(); return 0 }
 	if (command === 'rescue') { line(String((await rescueWeb()).message || '')); return 0 }
 	if (command === 'report') { line(buildAiReport()); return 0 }
+	if (command === 'diff') { await showDiffReport(); return 0 }
 	if (command === 'version' || command === '--version' || command === '-v') { line('0.5.0'); return 0 }
 	line('未知命令：' + command)
 	line('可用：scan | fix <id> | history | rescue | version | （无参数进菜单）')

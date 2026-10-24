@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.10.0 — 2026-10-24
+
+- **环境差异报告**（新能力）：`baseline/expected.json` 定义"标准 DSH"，逐项对比本机：
+  危险工作区、profile 缺少标准 bundle、依赖里出现宿主包、node_modules 里出现宿主包副本、
+  桌面低完整性/拒绝项、PATH 失效入口、崩溃日志、僵尸进程。
+  输出一个 MD（环境快照 + 差异 + 后端报错 + 提交方式）到桌面，可直接提 issue/PR。
+- 四个入口：插件页脚按钮（`POST /dsh-doctor/diff/save`）、`GET /dsh-doctor/diff`、
+  `node dsh-doctor.mjs diff`、`dsh-doctor.exe diff`（纯 PowerShell，不需要 Node）。
+- 修正基线归一化：`baseline/expected.json` 的分组字段（`profiles.*`）与代码形状不一致导致的
+  `undefined.filter` 崩溃；`guiProfiles` 单独判断，避免每个 profile 都要求 `dsh-web-app`。
+- EXE 写文件失败（例如在 DSH 沙箱终端里运行）时不再静默：会说明原因并把报告打印到控制台，可手动复制。
+
 ## v0.9.0 — 2026-10-24
 
 - **体检不再卡住宿主**：整包扫描移到 worker 线程，并缓存 8 秒；面板、图标轮询、报告生成不会反复全量扫描。

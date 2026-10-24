@@ -48,6 +48,14 @@ function normalizePath(value) {
 	return String(value).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
+function readJson(path) {
+	try {
+		return JSON.parse(readFileSync(path, 'utf8'))
+	} catch (error) {
+		return null
+	}
+}
+
 function powershell(command, timeout = 20000) {
 	try {
 		const result = spawnSync('powershell.exe', [
@@ -1610,6 +1618,216 @@ function openReleasePage(url) {
 	return { ok: true, message: '已在浏览器打开下载页：' + target }
 }
 
+/* ── 环境差异报告（对照标准 DSH 基线）────────────────────────────────── */
+
+const DEFAULT_BASELINE = {
+	requiredBundles: ['@deepseek-ai/dsh-base'],
+	guiProfiles: ['desktop', 'web'],
+	guiRequiredBundles: ['@deepseek-ai/dsh-web-app'],
+	forbiddenDependencies: ['@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-skill', '@deepseek-ai/schemastery', '@deepseek-ai/dsh-util-values', 'schemastery'],
+	forbiddenTopLevel: ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values'],
+	submitAs: 'https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new',
+}
+
+function readBaselineFile() {
+	const candidates = [
+		new URL('../../baseline/expected.json', import.meta.url),
+		new URL('../baseline.json', import.meta.url),
+	]
+	for (const candidate of candidates) {
+		try {
+			const parsed = JSON.parse(readFileSync(candidate, 'utf8'))
+			if (parsed !== null && typeof parsed === 'object') return normalizeBaseline(parsed)
+		} catch (error) { /* 试下一个 */ }
+	}
+	return null
+}
+
+/** baseline/expected.json 是给人和文档看的，字段分组不同；这里归一成代码用的形状。 */
+function normalizeBaseline(parsed) {
+	const profiles = parsed.profiles !== undefined && parsed.profiles !== null ? parsed.profiles : {}
+	const report = parsed.report !== undefined && parsed.report !== null ? parsed.report : {}
+	return {
+		requiredBundles: Array.isArray(profiles.requiredBundles) ? profiles.requiredBundles : DEFAULT_BASELINE.requiredBundles,
+		guiProfiles: Array.isArray(profiles.guiProfiles) ? profiles.guiProfiles : DEFAULT_BASELINE.guiProfiles,
+		guiRequiredBundles: Array.isArray(profiles.guiRequiredBundles) ? profiles.guiRequiredBundles : DEFAULT_BASELINE.guiRequiredBundles,
+		forbiddenDependencies: Array.isArray(profiles.forbiddenDependencies) ? profiles.forbiddenDependencies : DEFAULT_BASELINE.forbiddenDependencies,
+		forbiddenTopLevel: Array.isArray(profiles.forbiddenNodeModulesTopLevel) ? profiles.forbiddenNodeModulesTopLevel : DEFAULT_BASELINE.forbiddenTopLevel,
+		submitAs: typeof report.submitAs === 'string' && report.submitAs.length > 0 ? report.submitAs : DEFAULT_BASELINE.submitAs,
+	}
+}
+
+function crashLogSummary() {
+	const dir = crashLogDir()
+	if (!existsSync(dir)) return { count: 0, newest: null, firstLine: '' }
+	let files = []
+	try { files = readdirSync(dir).filter(name => name.startsWith('crash-')) } catch (error) { return { count: 0, newest: null, firstLine: '' } }
+	let newest = null
+	let firstLine = ''
+	for (const name of files) {
+		try {
+			const stat = statSync(join(dir, name))
+			if (newest === null || stat.mtimeMs > newest.mtimeMs) newest = { name, mtimeMs: stat.mtimeMs }
+		} catch (error) { /* ignore */ }
+	}
+	if (newest !== null) {
+		try {
+			const lines = readFileSync(join(dir, newest.name), 'utf8').split(/\r?\n/).filter(line => line.trim().length > 0)
+			firstLine = lines.length > 0 ? lines[0].trim().slice(0, 300) : ''
+		} catch (error) { firstLine = '' }
+	}
+	return { count: files.length, newest: newest !== null ? new Date(newest.mtimeMs).toISOString() : null, firstLine }
+}
+
+function collectEnvironmentSnapshot() {
+	const profilesRoot = join(dshHome(), 'profiles')
+	const profileList = []
+	for (const name of readDirNames(profilesRoot)) {
+		if (name.includes('.stale')) continue
+		const dir = join(profilesRoot, name)
+		const pkg = readJson(join(dir, 'package.json')) || {}
+		const bundles = pkg.dsh && Array.isArray(pkg.dsh.profile && pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : []
+		const dependencies = pkg.dependencies ? Object.keys(pkg.dependencies) : []
+		const topLevel = readDirNames(join(dir, 'node_modules'))
+		profileList.push({ name, bundles, dependencies, topLevel })
+	}
+	const registry = readWorkspaceRegistry()
+	const workspaces = registry === null ? [] : registry.list.map(item => ({ id: item.id, path: item.path, title: item.title }))
+	const desktopSddl = aclSddl(desktopPath())
+	const dshOnPath = shell(isWindows ? 'where.exe dsh' : 'which -a dsh 2>/dev/null || command -v dsh 2>/dev/null')
+	const pathEntries = dshOnPath.ok
+		? dshOnPath.out.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+		: []
+	return {
+		at: new Date().toISOString(),
+		platform: process.platform,
+		node: process.version,
+		electron: process.versions.electron || null,
+		dshHome: dshHome(),
+		desktop: desktopPath(),
+		desktopLow: /S:\(ML;;[^;]*;;;LW/.test(desktopSddl),
+		desktopDeny: /\(D;[^)]*;;;WD\)/.test(desktopSddl),
+		profiles: profileList,
+		workspaces,
+		crash: crashLogSummary(),
+		pathEntries,
+		zombies: listDshWebProcesses().length,
+		packs: existsSync(PACK_DIR()) ? readdirSync(PACK_DIR()).filter(name => name.toLowerCase().endsWith('.json')) : [],
+	}
+}
+
+function computeEnvironmentDiff(snapshot, baseline) {
+	const diffs = []
+	const add = (severity, title, detail, path) => diffs.push({ severity, title, detail, path: path || '' })
+
+	for (const workspace of snapshot.workspaces) {
+		const risk = workspaceRisk(workspace.path)
+		if (risk !== null) add('high', '工作区注册到了危险位置', '「' + risk + '」被注册为工作区：' + workspace.path + '，DSH 每次授权都会改写它的 ACL。', workspace.path)
+	}
+
+	if (snapshot.desktopLow) add('high', '桌面被降为低完整性', '桌面的完整性标签是 Low，Explorer 取不到图标（图标会变白）。', snapshot.desktop)
+	if (snapshot.desktopDeny) add('medium', '桌面残留拒绝删除项', '桌面上存在 Everyone 拒绝删除的 ACE。', snapshot.desktop)
+
+	for (const profile of snapshot.profiles) {
+		const bundles = Array.isArray(profile.bundles) ? profile.bundles : []
+		const dependencies = Array.isArray(profile.dependencies) ? profile.dependencies : []
+		const topLevel = Array.isArray(profile.topLevel) ? profile.topLevel : []
+		const missing = baseline.requiredBundles.filter(bundle => !bundles.includes(bundle))
+		if (missing.length > 0) add('medium', 'profile 缺少标准 bundle', 'profile「' + profile.name + '」缺少：' + missing.join('、'), profile.name)
+		if (baseline.guiProfiles.includes(profile.name)) {
+			const missingGui = baseline.guiRequiredBundles.filter(bundle => !bundles.includes(bundle))
+			if (missingGui.length > 0) add('medium', 'GUI profile 缺少 web-app bundle', 'profile「' + profile.name + '」缺少：' + missingGui.join('、'), profile.name)
+		}
+		const badDeps = dependencies.filter(dep => baseline.forbiddenDependencies.includes(dep))
+		if (badDeps.length > 0) add('medium', 'profile 依赖里出现宿主包', 'profile「' + profile.name + '」的 dependencies 含：' + badDeps.join('、') + '（应交给运行时提供）', profile.name)
+		const badTop = topLevel.filter(name => baseline.forbiddenTopLevel.includes(name))
+		if (badTop.length > 0) add('high', 'profile 里出现宿主包副本', 'profile「' + profile.name + '」的 node_modules 顶层有：' + badTop.join('、'), profile.name)
+	}
+
+	for (const entry of snapshot.pathEntries) {
+		if (!existsSync(entry)) add('low', 'PATH 里有失效的 dsh 入口', '指向不存在的文件：' + entry, entry)
+	}
+
+	if (snapshot.crash.count > 0) {
+		add('low', '存在桌面端崩溃日志', '共 ' + snapshot.crash.count + ' 个，最近 ' + String(snapshot.crash.newest || '未知')
+			+ (snapshot.crash.firstLine ? '，首行：' + snapshot.crash.firstLine : ''), '')
+	}
+	if (snapshot.zombies > 0) add('low', '存在僵尸 DSH 进程', '检测到 ' + snapshot.zombies + ' 个"端口已死但进程还在"的实例。', '')
+
+	return diffs
+}
+
+function buildDiffReport() {
+	const baseline = readBaselineFile() || DEFAULT_BASELINE
+	const snapshot = collectEnvironmentSnapshot()
+	const diffs = computeEnvironmentDiff(snapshot, baseline)
+	const high = diffs.filter(item => item.severity === 'high').length
+	const lines = []
+	lines.push('# DSH 环境差异报告')
+	lines.push('')
+	lines.push('> 生成时间：' + new Date(snapshot.at).toLocaleString() + '　平台：' + snapshot.platform)
+	lines.push('> 对照基线：' + (readBaselineFile() !== null ? 'baseline/expected.json' : '内置默认基线'))
+	lines.push('> 差异：' + high + ' 个高危 / ' + diffs.length + ' 条共')
+	lines.push('')
+	lines.push('## 环境快照')
+	lines.push('')
+	lines.push('- DSH 目录：`' + snapshot.dshHome + '`')
+	lines.push('- 桌面：`' + snapshot.desktop + '`')
+	lines.push('- Node：' + snapshot.node + (snapshot.electron ? ' · Electron ' + snapshot.electron : ''))
+	lines.push('- profile：' + snapshot.profiles.map(profile => profile.name + '(' + profile.bundles.length + ' bundles / ' + profile.topLevel.length + ' pkgs)').join('、'))
+	lines.push('- 工作区：' + (snapshot.workspaces.length > 0 ? snapshot.workspaces.map(item => item.title + ' -> ' + item.path).join('；') : '无'))
+	lines.push('- 桌面完整性：' + (snapshot.desktopLow ? 'Low（异常）' : 'OK') + (snapshot.desktopDeny ? ' · 有拒绝项' : ''))
+	lines.push('- 崩溃日志：' + snapshot.crash.count + ' 个' + (snapshot.crash.newest ? '（最近 ' + snapshot.crash.newest + '）' : ''))
+	lines.push('- dsh 命令：' + (snapshot.pathEntries.length > 0 ? snapshot.pathEntries.join('、') : 'PATH 里没有'))
+	lines.push('- 僵尸进程：' + snapshot.zombies)
+	lines.push('- 检查包：' + (snapshot.packs.length > 0 ? snapshot.packs.join('、') : '无'))
+	lines.push('')
+	lines.push('## 与标准基线的差异（' + diffs.length + ' 条）')
+	lines.push('')
+	if (diffs.length === 0) {
+		lines.push('没有发现差异——这台机器的 DSH 结构与标准基线一致。')
+	}
+	for (const diff of diffs) {
+		lines.push('### [' + diff.severity + '] ' + diff.title)
+		lines.push('')
+		if (diff.detail) lines.push(diff.detail)
+		if (diff.path) lines.push('')
+		if (diff.path) lines.push('`' + diff.path + '`')
+		lines.push('')
+	}
+	lines.push('## 后端报错')
+	lines.push('')
+	if (snapshot.crash.count === 0) {
+		lines.push('没有崩溃日志。')
+	} else {
+		lines.push('- 崩溃日志数：' + snapshot.crash.count + '，最近：' + String(snapshot.crash.newest || '未知'))
+		if (snapshot.crash.firstLine) lines.push('- 最近一次首行：`' + snapshot.crash.firstLine + '`')
+		lines.push('- 完整日志目录：`' + crashLogDir() + '`')
+	}
+	lines.push('')
+	lines.push('## 提交方式')
+	lines.push('')
+	lines.push('1. 想求助：把本文件贴到 issue / 浏览器里的 AI；')
+	lines.push('2. 想贡献：按 CONTRIBUTING.md 整理成 bug 图鉴条目或检查包；')
+	lines.push('3. 提交地址：' + String(baseline.submitAs || DEFAULT_BASELINE.submitAs))
+	lines.push('')
+	lines.push('> 注意：本文件含本机路径与用户名，提交前请自行脱敏。')
+	return lines.join('\n')
+}
+
+function writeDiffReport() {
+	try {
+		const markdown = buildDiffReport()
+		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
+		mkdirp(directory)
+		const file = join(directory, 'dsh-doctor-环境差异-' + stampForFile() + '.md')
+		writeFileSync(file, markdown, 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
 /* ── 给 AI 的求助报告 ───────────────────────────────────────────────── */
 
 function buildAiReport(findingsParam) {
@@ -1732,6 +1950,17 @@ async function handle(req, res) {
 			send(res, 200, openReleasePage(url))
 			return
 		}
+		if (path === PREFIX + '/diff' && req.method === 'GET') {
+			send(res, 200, { ok: true, markdown: buildDiffReport() })
+			return
+		}
+		if (path === PREFIX + '/diff/save' && req.method === 'POST') {
+			const file = writeDiffReport()
+			send(res, 200, file === null
+				? { ok: false, message: '差异报告写入失败（桌面不可写？）' }
+				: { ok: true, path: file, message: '环境差异报告已保存到：' + file })
+			return
+		}
 		if (path === PREFIX + '/report' && req.method === 'GET') {
 			send(res, 200, { ok: true, markdown: buildAiReport(await scanCached()) })
 			return
@@ -1809,7 +2038,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]
