@@ -76,6 +76,7 @@
 > **作者是学生**：工作日要上课，issue / PR 一般**集中在周末处理**；看到了都会记下，不用急。
 
 - [Relax](CONTRIBUTORS.md#relax)：报告「权限给太多、DSH 把自己文件删了」，促成 [`permission-too-broad`](docs/catalog.md) 检查和 [docs/recovery.md](docs/recovery.md)；
+- [yuki](CONTRIBUTORS.md#yuki)：定位「MCP server 加载失败拖垮整个 host」+ 端口漂移问题，促成 `mcp-entry-broken` 检查；
 - [完整名单 & 怎么上榜](CONTRIBUTORS.md)
 
 ## 遇到问题 / 想贡献
