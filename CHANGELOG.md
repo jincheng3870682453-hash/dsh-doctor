@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.13.5 — 2026-10-24
+
+回应社区反馈：**权限给太大，DSH 把自己的文件删了**。
+
+- **新检查 `permission-too-broad`**：读 `~/.dsh/storages/session_projcache.json` 里每个会话的权限投影，列出所有 `danger-full-access`（尤其再叠加 `approval: never`）的会话。本机实测 50 个会话里 **27 个**是这种配置——等于把整台机器交给模型，误删不经过回收站。
+- **新增 [docs/recovery.md](docs/recovery.md)**：文件被 DSH 删了怎么救——先停手 → 判断在 Git/回收站/卷影哪一层 → Git 恢复 → VSS/文件历史/网盘 → 数据恢复软件 → 从 DSH 会话日志找线索 → 防复发。
+- `docs/fixable.md` 增加「文件被 DSH 删了」条目（明确：不是一键修复，给恢复顺序）；`docs/traps.md` 加 #17；`bugs/unverified.md` 加 U13。
+- `bundle-version-skew` 修正：只有从 app.asar 读到**准确**运行时版本时才启用，避免 CLI 读到过期 runtime.json 时产生误报。
+
 ## v0.13.4 — 2026-10-24
 
 全量拆包比对 DSH 0.2.1-rc.2 → rc.3（下载 rc.2 安装包、提取 app.asar、与 rc.3 逐包比对），并据此补两个检查：

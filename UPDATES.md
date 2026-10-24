@@ -23,6 +23,14 @@
 
 ---
 
+## v0.13.5 — 2026-10-24
+
+- **新增体检项 `permission-too-broad`**：列出所有开着 `danger-full-access`（再叠加 `approval: never` 更糟）的会话——这种权限下 DSH 能删任意文件，而且**不进回收站**。本机实测 50 个会话里 27 个是这配置。
+- **新增 [docs/recovery.md](docs/recovery.md)**：文件被删后的正确恢复顺序（先停手 → Git → 卷影/文件历史/网盘 → 回收站 → 恢复软件 → DSH 日志线索）+ 防复发清单。
+- 修 `bundle-version-skew` 在 CLI 下的误报（只有 asar 读到的准确版本才作为基准）。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.5)
+
 ## v0.13.4 — 2026-10-24
 
 - **响应 DSH rc.3 更新**：把 rc.2 和 rc.3 的安装包都拆开逐包比对（新增只有「界面自定义」一个包 + 3 个新插槽，无删除，296 个包统一升版）。

@@ -653,6 +653,7 @@ const DETECTORS = {
 	'bundle-identity-drift': () => checkBundleIdentityDrift(),
 	'bundle-version-skew': () => checkBundleVersionSkew(),
 	'runtime-metadata-stale': () => checkRuntimeMetadataStale(),
+	'permission-too-broad': () => checkPermissionTooBroad(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -760,6 +761,7 @@ function scan() {
 		checkBundleIdentityDrift,
 		checkBundleVersionSkew,
 		checkRuntimeMetadataStale,
+		checkPermissionTooBroad,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -1701,7 +1703,9 @@ function installedRuntime() {
 function checkBundleVersionSkew() {
 	const findings = []
 	const runtime = installedRuntime()
-	if (runtime === null) return findings
+	// runtime.json 在桌面端更新后经常不刷新（本机实测），拿它当基准会全是误报；
+	// 只有从 app.asar 读到的版本才可信。
+	if (runtime === null || runtime.exact !== true) return findings
 	const profilesRoot = join(dshHome(), 'profiles')
 	for (const profileName of readDirNames(profilesRoot)) {
 		if (profileName.includes('.stale')) continue
@@ -1746,6 +1750,44 @@ function checkRuntimeMetadataStale() {
 				+ '任何读取 runtime.json 判断版本的工具/插件都会误判。',
 			runtimeFile, null))
 	}
+	return findings
+}
+
+/**
+ * 权限过宽：danger-full-access 等于把整台机器交给模型，approval: never 连确认都省了。
+ * 用户的文件一旦被删，DSH 不经过回收站，常规手段找不回来。
+ * 会话的权限投影在 ~/.dsh/storages/session_projcache.json 的 tables.sessions.<id>.rows.permissions。
+ */
+function checkPermissionTooBroad() {
+	const findings = []
+	const cacheFile = join(dshHome(), 'storages', 'session_projcache.json')
+	const cache = readJson(cacheFile)
+	if (cache === null || typeof cache !== 'object') return findings
+	const sessions = cache.tables !== undefined && cache.tables !== null && cache.tables.sessions !== undefined && cache.tables.sessions !== null
+		? cache.tables.sessions
+		: {}
+	const broad = []
+	for (const [sessionId, row] of Object.entries(sessions)) {
+		const value = row !== null && row !== undefined && row.rows !== undefined && row.rows !== null
+			&& row.rows.permissions !== undefined && row.rows.permissions !== null
+			&& row.rows.permissions.val !== undefined && row.rows.permissions.val !== null
+			? row.rows.permissions.val
+			: null
+		if (value === null) continue
+		if (value.sandbox !== 'danger-full-access' && value.preset !== 'danger-full-access') continue
+		broad.push({ sessionId, approval: String(value.approval || '') })
+	}
+	if (broad.length === 0) return findings
+	const noApproval = broad.filter(item => item.approval === 'never').length
+	const sample = broad.slice(0, 5).map(item => item.sessionId.replace(/^session-/, '').slice(0, 8)).join('、')
+	findings.push(finding('permission-too-broad', noApproval > 0 ? 'high' : 'medium',
+		'有 ' + broad.length + ' 个会话开着 danger-full-access' + (noApproval > 0 ? '（其中 ' + noApproval + ' 个连审批也关了）' : ''),
+		'这些会话的沙箱是 danger-full-access' + (noApproval > 0 ? '、审批策略 never' : '')
+			+ '——等于把整台机器交给模型，误删文件**不经过回收站、不可撤销**。'
+			+ '涉及会话：' + sample + (broad.length > 5 ? ' 等' : '') + '。'
+			+ '建议：会话里用 `/permission` 切到 `workspace-write` + `ask`；新会话在设置里改默认权限。'
+			+ '已经被删的文件，恢复路径见 docs/recovery.md。',
+		cacheFile, null))
 	return findings
 }
 

@@ -87,6 +87,18 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Directory -Filter '@dee
 
 ---
 
+### 17. 权限给太大，DSH 把文件删了
+
+**症状**：让 DSH 干活，结果它删掉了项目/家目录里的一部分文件；回收站里没有。
+
+**根因**：会话权限是 `danger-full-access` + 审批 `never`——模型可对整台机器执行任何命令，删除走 `Remove-Item`/`unlink`，**不进回收站**。
+
+**怎么查**：医生 `permission-too-broad`（v0.13.5）；或看 `~/.dsh/storages/session_projcache.json` 里每个会话的 `permissions`。
+
+**怎么救**：Git 仓库先 `git restore`；然后卷影副本 / 文件历史 / 网盘版本历史；最后才是数据恢复软件。完整顺序见 [recovery.md](recovery.md)。
+
+**防复发**：`/permission` 切成 `workspace-write` + `ask`；工作区单独建目录，不要选家目录/桌面/盘根。
+
 ## 三、会话格式类
 
 ### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）

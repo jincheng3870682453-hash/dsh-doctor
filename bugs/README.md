@@ -34,6 +34,7 @@
 | [U10](unverified.md#u10-more-菜单在桌面端会上报埋点) | More 菜单上报埋点 | 疑似（隐私） |
 | [U11](unverified.md#u11-bundle-identity-drift-只扫-client-文件前-4kb) | `bundle-identity-drift` 只扫前 4KB | 已知局限 |
 | [U12](unverified.md#u12-runtime-metadata-stale-依赖-asar-路径) | `runtime-metadata-stale` 依赖 asar 路径 | 已知局限 |
+| [U13](unverified.md#u13-权限过宽danger-full-access--approval-never导致误删文件) | 权限过宽导致误删文件 | 半验证 |
 
 > 判断标准：**"DSH 引起"** = 不装医生就会中招；**"自伤 bug"** = 医生自己写出来的坑，修复后通常还会写进 CI 防止复发。
 > 疑似条目验证通过后请移进上面的正式表；没复现就别当结论用。

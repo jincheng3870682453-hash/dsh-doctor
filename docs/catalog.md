@@ -18,6 +18,7 @@
 | 9 | `patch-layer-missing` | `patch-layer-missing` | `cordis.patch.yml` 被崩溃自修复清空（有备份才算） | 0.2 |
 | 10 | `path-dead-dsh` | `path-dead-dsh` | PATH 里的 `dsh` 指向不存在的文件 | 0.2 |
 | 11 | `workspace-not-writable` | `workspace-not-writable` | 工作区真的写不进去（起不来 / grantWrite Win32 5） | 0.5.3 |
+| 16 | `permission-too-broad` | `permission-too-broad` | 有会话开着 danger-full-access（+ approval never）→ 可删任意文件、不可撤销 | 0.13.5 |
 | 14 | `bundle-version-skew` | `bundle-version-skew` | profile 里 @deepseek-ai/* 插件固定在旧版本，运行时兼容性守卫会禁用 | 0.13.4 |
 | 15 | `runtime-metadata-stale` | `runtime-metadata-stale` | runtime.json 的 desktopVersion 与桌面端实际版本不一致（更新后不刷新） | 0.13.4 |
 | 13 | `bundle-identity-drift` | `bundle-identity-drift` | 依赖名 / 包名 / 客户端模块 id 三者不一致（改了包名没同步 → 图标面板静默消失） | 0.13.3 |

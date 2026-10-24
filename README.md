@@ -8,7 +8,7 @@
 
 **点一下修复。**
 
-[![Version](https://img.shields.io/badge/Version-0.13.4-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.13.5-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
@@ -57,6 +57,7 @@
 | | |
 |---|---|
 | [docs/install.md](docs/install.md) | 安装方式（npm / 本地 zip / 命令行 / AI）与桌面端限制 |
+| [docs/recovery.md](docs/recovery.md) | **文件被 DSH 删了怎么救**：Git / 卷影 / 回收站 / 恢复软件 / 防复发 |
 | [docs/fixable.md](docs/fixable.md) | 修复清单：按症状列出能修 / 只查，含根因 |
 | [docs/traps.md](docs/traps.md) | 踩雷清单（16 类），含根因与手工修法 |
 | [bugs/](bugs/README.md) | Bug 图鉴：已复现的问题 + [疑似未验证清单](bugs/unverified.md) |
