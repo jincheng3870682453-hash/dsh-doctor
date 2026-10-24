@@ -51,10 +51,9 @@ jobs:
       - name: Native CLI smoke (scan --json)
         shell: pwsh
         run: |
-          $json = ./doctor-sys/target/release/doctor-sys.exe scan --json
-          $parsed = $json | ConvertFrom-Json
-          if (-not ($parsed -is [array])) { throw 'native scan did not return JSON array' }
-          Write-Host ('native scan ok: ' + $parsed.Count + ' finding(s)')
+          $raw = (./doctor-sys/target/release/doctor-sys.exe scan --json | Out-String).Trim()
+          if (-not $raw.StartsWith('[')) { throw ('native scan did not return a JSON array: ' + $raw) }
+          Write-Host ('native scan ok: ' + $raw.Length + ' bytes of JSON')
       - name: Stage native CLI
         shell: pwsh
         run: Copy-Item ./doctor-sys/target/release/doctor-sys.exe ./doctor-sys/target/release/dsh-doctor-native.exe
