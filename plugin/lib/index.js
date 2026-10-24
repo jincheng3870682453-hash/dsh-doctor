@@ -651,6 +651,8 @@ const DETECTORS = {
 	'workspace-not-grantable': () => checkWorkspaceGrantability(),
 	'zombie-dsh-process': () => checkZombieProcesses(),
 	'bundle-identity-drift': () => checkBundleIdentityDrift(),
+	'bundle-version-skew': () => checkBundleVersionSkew(),
+	'runtime-metadata-stale': () => checkRuntimeMetadataStale(),
 	'file-regex': (check) => {
 		const findings = []
 		const dir = expandVars(check.path)
@@ -756,6 +758,8 @@ function scan() {
 		checkWorkspaceGrantability,
 		checkZombieProcesses,
 		checkBundleIdentityDrift,
+		checkBundleVersionSkew,
+		checkRuntimeMetadataStale,
 	]
 	const findings = []
 	for (const check of builtin) {
@@ -1664,6 +1668,83 @@ function checkBundleIdentityDrift() {
 					clientFile, null))
 			}
 		}
+	}
+	return findings
+}
+
+/**
+ * 当前 DSH 运行时的真实版本：
+ *   - Electron 宿主里 fs 能读 app.asar（process.resourcesPath），拿到最准的版本；
+ *   - CLI / 环境包里读不到 asar，退回 ~/.dsh/dsh-runtimes 的 runtime.json（可能过期）。
+ */
+function installedRuntime() {
+	const candidates = []
+	if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+		candidates.push(join(process.resourcesPath, 'app.asar', 'package.json'))
+	}
+	for (const candidate of candidates) {
+		const meta = readJson(candidate)
+		if (meta !== null && typeof meta.version === 'string') return { version: meta.version, source: candidate, exact: true }
+	}
+	const runtimeFile = join(dshHome(), 'dsh-runtimes', 'dsh-primary-runtime', 'runtime.json')
+	const meta = readJson(runtimeFile)
+	if (meta !== null && typeof meta.desktopVersion === 'string') {
+		return { version: meta.desktopVersion, source: runtimeFile, exact: false }
+	}
+	return null
+}
+
+/**
+ * profile 里 @deepseek-ai/* 插件固定在旧版本时，运行时的兼容性守卫会直接禁用它们。
+ * 表现是插件仍在列表里、但功能不工作（或启动时 "did not activate"）。
+ */
+function checkBundleVersionSkew() {
+	const findings = []
+	const runtime = installedRuntime()
+	if (runtime === null) return findings
+	const profilesRoot = join(dshHome(), 'profiles')
+	for (const profileName of readDirNames(profilesRoot)) {
+		if (profileName.includes('.stale')) continue
+		const profileDir = join(profilesRoot, profileName)
+		const pkg = readJson(join(profileDir, 'package.json'))
+		if (pkg === null || pkg.dependencies === undefined || pkg.dependencies === null) continue
+		for (const depName of Object.keys(pkg.dependencies)) {
+			if (!depName.startsWith('@deepseek-ai/')) continue
+			const declared = String(pkg.dependencies[depName] || '')
+			if (!/^\d/.test(declared)) continue
+			const installed = readJson(join(profileDir, 'node_modules', depName, 'package.json'))
+			const version = installed !== null && typeof installed.version === 'string' ? installed.version : declared
+			if (version === runtime.version) continue
+			findings.push(finding('bundle-version-skew', 'medium',
+				'插件版本与运行时不一致：' + depName,
+				'profile「' + profileName + '」里是 `' + version + '`，运行时是 `' + runtime.version + '`'
+					+ (runtime.exact ? '' : '（来自 runtime.json，可能过期）')
+					+ '。兼容性守卫会禁用版本不符的插件，表现为"插件还在列表里但功能不工作"。'
+					+ '修复：把该插件升级到与运行时一致的版本，或先禁用/移除它。',
+				join(profileDir, 'node_modules', depName), null))
+		}
+	}
+	return findings
+}
+
+/** runtime.json 在桌面端更新后可能不刷新，依赖它的版本判断会全部错位。 */
+function checkRuntimeMetadataStale() {
+	const findings = []
+	const runtimeFile = join(dshHome(), 'dsh-runtimes', 'dsh-primary-runtime', 'runtime.json')
+	const meta = readJson(runtimeFile)
+	if (meta === null || typeof meta.desktopVersion !== 'string') return findings
+	// 只有 Electron 宿主能读 app.asar 拿到准确版本；CLI / 环境包跳过。
+	const appFile = typeof process.resourcesPath === 'string'
+		? join(process.resourcesPath, 'app.asar', 'package.json')
+		: null
+	const appMeta = appFile === null ? null : readJson(appFile)
+	if (appMeta === null || typeof appMeta.version !== 'string') return findings
+	if (meta.desktopVersion !== appMeta.version) {
+		findings.push(finding('runtime-metadata-stale', 'low',
+			'运行时元数据版本过期',
+			'`runtime.json` 里写的是 `' + String(meta.desktopVersion) + '`，实际桌面端已是 `' + appMeta.version + '`。'
+				+ '任何读取 runtime.json 判断版本的工具/插件都会误判。',
+			runtimeFile, null))
 	}
 	return findings
 }

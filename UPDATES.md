@@ -23,6 +23,16 @@
 
 ---
 
+## v0.13.4 — 2026-10-24
+
+- **响应 DSH rc.3 更新**：把 rc.2 和 rc.3 的安装包都拆开逐包比对（新增只有「界面自定义」一个包 + 3 个新插槽，无删除，296 个包统一升版）。
+- **新增体检项**：
+  - `bundle-version-skew`：官方插件固定在旧版本（本机 `subagent-codex` / `subagent-claude-code` 还是 rc.1）→ 报"插件还在列表里但功能不工作"；
+  - `runtime-metadata-stale`：`runtime.json` 版本没跟着桌面端更新（本机仍写 rc.2）→ 报出来，避免版本判断错位。
+- 审计工具：`tools/snapshot-asar.mjs` + `tools/diff-asar-snapshots.mjs`，下次更新一条命令复现比对。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.4)
+
 ## v0.13.3 — 2026-10-24
 
 - **修「DSH 更新后插件图标没了」**：不是 DSH 挤掉的——我们上 npm 时把包名改成 `dsh-doctor-plugin`，但 patch 行和客户端模块 id 还是旧名，浏览器半边静默不注册。已全部对齐并重装，图标/面板恢复。

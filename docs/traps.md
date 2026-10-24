@@ -89,6 +89,15 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Directory -Filter '@dee
 
 ## 三、会话格式类
 
+### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）
+
+**症状**：升级 DSH 桌面端后，某个官方插件仍显示"已启用"，但它提供的功能消失；插件列表里可能带 `incompatible-version`。
+
+**根因**：profile 把 `@deepseek-ai/*` 插件固定在旧版本（如 `0.2.1-rc.1`），而运行时升到了 `0.2.1-rc.3`；兼容性守卫拒绝加载版本不符的插件。
+
+**一击修复**：把该插件升级到与运行时一致的版本（`plugin_manager` 安装新版本），或者先禁用/移除它。
+
+**自检**：`bundle-version-skew` 检查（v0.13.4 起）会直接列出不一致的插件。
 ### 15. 改了 npm 包名后，侧边栏图标和面板消失
 
 **症状**：宿主功能还在（`/dsh-doctor/status` 正常、体检能跑），但侧边栏图标和面板"被挤掉了"；插件列表里 bundle 仍显示已启用、无报错。

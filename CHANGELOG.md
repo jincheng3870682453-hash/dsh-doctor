@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.13.4 — 2026-10-24
+
+全量拆包比对 DSH 0.2.1-rc.2 → rc.3（下载 rc.2 安装包、提取 app.asar、与 rc.3 逐包比对），并据此补两个检查：
+
+- **`bundle-version-skew`**：profile 里 `@deepseek-ai/*` 插件固定在旧版本（本次实测：`dsh-subagent-codex` / `dsh-subagent-claude-code` 还是 rc.1，运行时已 rc.3）时直接报提醒——这正是"插件还在列表里但功能不工作"的原因。
+- **`runtime-metadata-stale`**：`~/.dsh/dsh-runtimes/dsh-primary-runtime/runtime.json` 在桌面端更新后没有刷新（仍写 rc.2，实际 rc.3），任何依赖它判断版本的逻辑都会误判。
+- 审计工具：`tools/snapshot-asar.mjs`、`tools/diff-asar-snapshots.mjs`，下次升级可以一条命令复现这份比对。
+
+本次比对结论（rc.2 → rc.3）：新增包只有 `@deepseek-ai/dsh-client-ui-entry-customization`（界面自定义 More 菜单），无删除；296 个包统一升到 rc.3；新增 3 个客户端插槽（`sidebar.panellist.actions`、`conversation.session.header.views.actions`、`sidebar.right.tab.guide.actions`）；base/plugin-manager/session-format/renderer 代码未变。
+
 ## v0.13.3 — 2026-10-24
 
 **修「DSH 更新后插件图标被挤掉」的真正原因**：不是 DSH 挤掉，是我们改了 npm 包名（`dsh-doctor` → `dsh-doctor-plugin`）但标识没同步。
