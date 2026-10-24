@@ -10,7 +10,7 @@
  * 设计约束：单条检查/修复失败不影响其它；不碰 DSH 安装目录；写操作先备份再复检。
  */
 import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync, openSync, unlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
@@ -1618,6 +1618,41 @@ function openReleasePage(url) {
 	return { ok: true, message: '已在浏览器打开下载页：' + target }
 }
 
+/* ── 脱敏：报告对外提交前，把能定位到"某个人"的东西换成占位符 ─────────── */
+
+function escapeRegExp(value) {
+	return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 替换规则（保留目录结构，方便维护者定位）：
+ *   C:\Users\张三\...        -> C:\Users\user\...
+ *   /home/zhangsan/...       -> /home/user/...
+ *   /Users/zhangsan/...      -> /Users/user/...   (macOS)
+ *   <当前用户名>（散落在日志里） -> user
+ *   <当前主机名>             -> <machine>
+ *   name@example.com         -> user@example.com
+ */
+function sanitizeText(input) {
+	let out = String(input === null || input === undefined ? '' : input)
+	if (out.length === 0) return out
+	const user = String(process.env.USERNAME || process.env.USER || '').trim()
+	const machine = hostname()
+
+	out = out.replace(/([A-Za-z]:\\Users\\)([^\\/\s`'"()<>|,;]+)/gi, '$1user')
+	out = out.replace(/(\/home\/)([^\/\s`'"()<>|,;]+)/g, '$1user')
+	out = out.replace(/(\/Users\/)([^\/\s`'"()<>|,;]+)/g, '$1user')
+
+	if (user.length >= 3) {
+		try {
+			out = out.replace(new RegExp('(?<![A-Za-z0-9_])' + escapeRegExp(user) + '(?![A-Za-z0-9_])', 'gi'), 'user')
+		} catch (error) { /* 老运行时没有 lookbehind，退化为全局替换 */ out = out.split(user).join('user') }
+	}
+	if (machine.length >= 3) out = out.split(machine).join('<machine>')
+	out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, 'user@example.com')
+	return out
+}
+
 /* ── 环境差异报告（对照标准 DSH 基线）────────────────────────────────── */
 
 const DEFAULT_BASELINE = {
@@ -1811,8 +1846,8 @@ function buildDiffReport() {
 	lines.push('2. 想贡献：按 CONTRIBUTING.md 整理成 bug 图鉴条目或检查包；')
 	lines.push('3. 提交地址：' + String(baseline.submitAs || DEFAULT_BASELINE.submitAs))
 	lines.push('')
-	lines.push('> 注意：本文件含本机路径与用户名，提交前请自行脱敏。')
-	return lines.join('\n')
+	lines.push('> 已脱敏：用户名 / 主机名 / 邮箱 / 用户主目录已替换为占位符（user、<machine>、user@example.com），其余路径保留原样以便定位。')
+	return sanitizeText(lines.join('\n'))
 }
 
 function writeDiffReport() {
@@ -1889,7 +1924,9 @@ function buildAiReport(findingsParam) {
 	lines.push('## 我想问')
 	lines.push('')
 	lines.push('（在这里写你的问题，例如"下一步应该先修哪个？"）')
-	return lines.join('\n')
+	lines.push('')
+	lines.push('> 已脱敏：用户名 / 主机名 / 邮箱 / 用户主目录已替换为占位符（user、<machine>、user@example.com）。')
+	return sanitizeText(lines.join('\n'))
 }
 
 function writeAiReport(findingsParam) {

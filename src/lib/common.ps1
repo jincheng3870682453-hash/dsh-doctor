@@ -107,6 +107,26 @@ function New-DoctorBackupDir {
     return $dir
 }
 
+function Get-SanitizedText {
+    # 报告对外提交前脱敏：用户名 / 主机名 / 邮箱 / 用户主目录换成占位符，保留目录结构。
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    $out = $Text
+    $out = [regex]::Replace($out, '([A-Za-z]:\\Users\\)([^\\/\s''"`()<>|,;]+)', '${1}user', 'IgnoreCase')
+    $out = [regex]::Replace($out, '(/home/)([^/\s''"`()<>|,;]+)', '${1}user')
+    $out = [regex]::Replace($out, '(/Users/)([^/\s''"`()<>|,;]+)', '${1}user')
+    $user = [string]$env:USERNAME
+    if (-not [string]::IsNullOrWhiteSpace($user) -and $user.Length -ge 3) {
+        $out = [regex]::Replace($out, [regex]::Escape($user), 'user', 'IgnoreCase')
+    }
+    $machine = [string]$env:COMPUTERNAME
+    if (-not [string]::IsNullOrWhiteSpace($machine) -and $machine.Length -ge 3) {
+        $out = [regex]::Replace($out, [regex]::Escape($machine), '<machine>', 'IgnoreCase')
+    }
+    $out = [regex]::Replace($out, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', 'user@example.com')
+    return $out
+}
+
 function Get-PathAclInfo {
     param([Parameter(Mandatory)][string]$Path)
     $result = [pscustomobject]@{

@@ -37,4 +37,18 @@ dsh-doctor.exe diff             # Windows EXE：同上（无 Node 环境）
 
 - 想求助：把内容贴到 issue / 浏览器里的 AI；
 - 想贡献：按 [CONTRIBUTING.md](../CONTRIBUTING.md) 整理成 bug 图鉴条目或检查包；
-- **提交前自己看一眼**：里面含本机路径和用户名。
+- 报告已**自动脱敏**：用户名 / 主机名 / 邮箱 / 用户主目录换成 `user`、`<machine>`、`user@example.com`，目录结构保留以便定位。
+
+## 脱敏规则
+
+| 原始 | 输出 |
+|---|---|
+| `C:\Users\张三\...` | `C:\Users\user\...` |
+| `/home/zhangsan/...` | `/home/user/...` |
+| `/Users/zhangsan/...`（macOS） | `/Users/user/...` |
+| 散落在日志里的当前用户名 | `user` |
+| 当前主机名 | `<machine>` |
+| `name@example.com` | `user@example.com` |
+
+非用户目录的路径（如 `G:\PV项目`）会保留——那是定位问题所必需的。
+

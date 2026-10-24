@@ -298,7 +298,7 @@ function Get-RescueDiffReport {
     [void]$lines.Add('2. 想贡献：按 CONTRIBUTING.md 整理成 bug 图鉴条目或检查包；')
     [void]$lines.Add('3. 提交地址：https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new')
     [void]$lines.Add('')
-    [void]$lines.Add('> 注意：本文件含本机路径与用户名，提交前请自行脱敏。')
+    [void]$lines.Add('> 已脱敏：用户名 / 主机名 / 邮箱 / 用户主目录已替换为占位符（user、<machine>、user@example.com），其余路径保留原样以便定位。')
     return $lines -join "`n"
 }
 
@@ -324,7 +324,7 @@ function Show-RescueWriteDiagnostics {
 }
 
 function Show-RescueDiffReport {
-    $markdown = Get-RescueDiffReport
+    $markdown = Get-SanitizedText -Text (Get-RescueDiffReport)
     $candidates = @(
         [Environment]::GetFolderPath('Desktop'),
         (Join-Path (Get-DshHome) 'dsh-doctor')
@@ -348,7 +348,8 @@ function Show-RescueDiffReport {
         }
     }
     if ($file -eq '') {
-        Write-DoctorWarn ('无法写入文件（' + ($errors -join '；') + '），已把报告打印在下面，可手动复制保存。')
+        $warn = Get-SanitizedText -Text ('无法写入文件（' + ($errors -join '；') + '），已把报告打印在下面，可手动复制保存。')
+        Write-DoctorWarn $warn
         Write-Host ''
         Write-Host $markdown
         return

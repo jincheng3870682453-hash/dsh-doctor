@@ -93,7 +93,8 @@ node dsh-doctor.mjs fix workspace-entry
 
 - 默认只读；每个修复先备份、改完复检，失败自动还原；
 - 没有 shell 通道：检查包只能声明「检测原语 + 内置修复 id」；
-- 不碰 DSH 安装目录、不注册服务/驱动；改动均可回滚。
+- 不碰 DSH 安装目录、不注册服务/驱动；改动均可回滚；
+- **报告自动脱敏**：用户名 / 主机名 / 邮箱 / 用户主目录替换为 `user`、`<machine>`、`user@example.com`，可以直接提交 issue 或发给 AI。
 
 ## 参与贡献
 
