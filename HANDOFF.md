@@ -253,7 +253,7 @@ $sha = gh api repos/jincheng3870682453-hash/dsh-doctor/git/ref/heads/main --jq .
 | 风险 | 说明 | 建议 |
 |---|---|---|
 | macOS / Linux 未实机验证 | 只有 Windows 真机跑过 | 找真机跑 Unix 包，补 CI 覆盖不到的部分 |
-| npm 包待发布 | 包名定 `dsh-doctor-plugin`（`dsh-doctor` 被 npm 上第三方同名包 astra3294/dsh-doctor 占用，同领域撞名，注意甄别） | `cd plugin && npm login && npm publish`；发布后补 README 安装文档 |
+| npm 包待发布 | 已登录（jinchengszj）但账号被 npm 临时冻结（安全自动化：新登录+发新包+一次无效 OTP 触发）。解冻后一条命令即发：`cd plugin && npm publish --otp=<6位码>`（账号要求发布级 2FA） | 查账号邮箱里 npm 的冻结说明/走 support；或改用勾了 bypass 2FA 的 Granular Token |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑（v0.12.0 起气泡优先走引擎 notify） | 做安装向导（自启/托盘/卸载） |
 | AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | `doctor-sys.exe notify` 原语 + watch.mjs 已接（v0.12.0）；沙箱内被 UIPI 拒，如实返回 shown:false |
