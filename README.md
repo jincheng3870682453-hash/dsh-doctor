@@ -45,7 +45,7 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 
 ### 方式一：npm 包名直装（最快）
 
-已发布到 npm：**`dsh-doctor-plugin`**（latest 0.13.1）。
+已发布到 npm：**`dsh-doctor-plugin`**（latest 0.13.2）。
 
 - **应用内**：「添加插件」对话框直接填包名 `dsh-doctor-plugin`，保持默认安装源，点安装；
 - **命令行**：`dsh plugin --profile <name> add dsh-doctor-plugin`；

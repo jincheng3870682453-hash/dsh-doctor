@@ -25,6 +25,8 @@
 
 ## v0.13.2 — 2026-10-24
 
+- 已发布 npm：`dsh-doctor-plugin@0.13.2`（latest）。
+
 - **修掉评审提的 14 条**：`set-integrity-label --recursive` 不再重复遍历整棵树（桌面几千文件不再卡）；ACL 还原对 `D:...O:...` 的 SDDL 不再漏判；selftest 临时文件一定清理；差异报告补上 `requiredFiles` 检查；脱敏支持带空格的用户名；`.cmd` 引擎也能被桥接调用；版本号不再硬编码；CI 去掉重复的 Rust 构建。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.2)
