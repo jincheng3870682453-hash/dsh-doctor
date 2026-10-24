@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.6 — 2026-10-24
+
+- **EXE 同步**：v0.13.5 的 `permission-too-broad` 只加在 JS 插件侧，`dsh-doctor.exe` 走的是 PowerShell 检查表，所以 EXE 扫不到。本版补上 PS 版 `Test-DoctorPermissionTooBroad`（读 `session_projcache.json`，按会话列出 `danger-full-access`），并重新打包 EXE。
+- 实测 EXE 现在输出：`[High] Sessions run with danger-full-access and approval never: 27`。
+- 记录一个结构性事实：**EXE 与插件的检查表是两套**（PS / JS），以后新增检查两边都要加（已写进 HANDOFF 专项 #39）。
+
 ## v0.13.5 — 2026-10-24
 
 回应社区反馈：**权限给太大，DSH 把自己的文件删了**。

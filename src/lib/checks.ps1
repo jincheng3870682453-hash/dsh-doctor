@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 # Read-only checks for dsh-doctor. Every check returns an array of findings and
 # must never throw: failures degrade into a Medium finding.
 
@@ -450,6 +450,52 @@ function Get-DoctorEnvironmentSnapshot {
     return $snapshot
 }
 
+function Test-DoctorPermissionTooBroad {
+    $findings = New-Object System.Collections.ArrayList
+    $file = Join-Path (Get-DshHome) 'storages\session_projcache.json'
+    if (-not (Test-Path -LiteralPath $file)) { return $findings.ToArray() }
+    Write-DoctorStep ('Check session permission presets: ' + $file)
+    try {
+        $cache = Get-Content -LiteralPath $file -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        [void]$findings.Add((New-Finding -Id 'permission-cache-unreadable' -Severity 'Info' -Path $file `
+            -Title 'Session projection cache could not be read' -Detail $_.Exception.Message))
+        return $findings.ToArray()
+    }
+    $tables = Get-JsonProperty -Object $cache -Name 'tables'
+    $sessions = Get-JsonProperty -Object $tables -Name 'sessions'
+    if ($null -eq $sessions) { return $findings.ToArray() }
+
+    $broad = New-Object System.Collections.ArrayList
+    foreach ($property in @($sessions.PSObject.Properties)) {
+        $rows = Get-JsonProperty -Object $property.Value -Name 'rows'
+        $permission = Get-JsonProperty -Object $rows -Name 'permissions'
+        $value = Get-JsonProperty -Object $permission -Name 'val'
+        if ($null -eq $value) { continue }
+        $preset = [string](Get-JsonProperty -Object $value -Name 'preset')
+        $sandbox = [string](Get-JsonProperty -Object $value -Name 'sandbox')
+        $approval = [string](Get-JsonProperty -Object $value -Name 'approval')
+        if ($sandbox -ne 'danger-full-access' -and $preset -ne 'danger-full-access') { continue }
+        [void]$broad.Add([pscustomobject]@{ Session = $property.Name; Approval = $approval })
+    }
+    if ($broad.Count -eq 0) { return $findings.ToArray() }
+
+    $noApproval = @($broad | Where-Object { $_.Approval -eq 'never' }).Count
+    $severity = if ($noApproval -gt 0) { 'High' } else { 'Medium' }
+    $sample = (@($broad | Select-Object -First 5 | ForEach-Object {
+        $short = $_.Session -replace '^session-', ''
+        if ($short.Length -gt 8) { $short = $short.Substring(0, 8) }
+        $short
+    }) -join ', ')
+    $suffix = if ($noApproval -gt 0) { ' and approval never' } else { '' }
+    [void]$findings.Add((New-Finding -Id 'permission-too-broad' -Severity $severity -Path $file `
+        -Title ('Sessions run with danger-full-access' + $suffix + ': ' + $broad.Count) `
+        -Detail ('danger-full-access hands the whole machine to the model; deletes do not go to the Recycle Bin and cannot be undone. ' +
+            'Switch to workspace-write + ask via /permission. Recovery steps: docs/recovery.md. Sessions: ' + $sample) `
+        -Evidence @($file)))
+    return $findings.ToArray()
+}
+
 function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
@@ -458,7 +504,8 @@ function Invoke-DoctorScan {
         'Test-DoctorProfileHostDup',
         'Test-DoctorPluginManifests',
         'Test-DoctorPluginSourceKind',
-        'Test-DoctorCrashLogs'
+        'Test-DoctorCrashLogs',
+        'Test-DoctorPermissionTooBroad'
     )
     $all = New-Object System.Collections.ArrayList
     foreach ($check in $checks) {

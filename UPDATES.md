@@ -23,6 +23,13 @@
 
 ---
 
+## v0.13.6 — 2026-10-24
+
+- **EXE 同步**：上一版的新检查只加在插件(JS)侧，`dsh-doctor.exe`（PowerShell）没有；本版补上并重打 EXE，`dsh-doctor.exe scan` 现在也会直接报 `[High] Sessions run with danger-full-access … 27`。
+- 记下结构性注意点：EXE 与插件的检查表是两套（PS / JS），以后加检查两边都要加。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.6)
+
 ## v0.13.5 — 2026-10-24
 
 - **新增体检项 `permission-too-broad`**：列出所有开着 `danger-full-access`（再叠加 `approval: never` 更糟）的会话——这种权限下 DSH 能删任意文件，而且**不进回收站**。本机实测 50 个会话里 27 个是这配置。
