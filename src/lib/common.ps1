@@ -144,7 +144,9 @@ function Get-PathAclInfo {
         $acl = Get-Acl -LiteralPath $Path
         $sddl = [string]$acl.Sddl
         $result.Sddl = $sddl
-        $result.LowLabel = [bool]($sddl -match 'S:\(ML;;[^;]*;;;LW')
+        # 容忍 AI 控制位与继承标志（SetNamedSecurityInfoW 写的标签读回是 S:AI(ML;;…，DSH 直写的没有）。
+        # 字段结构固定：ML;flags;rights;;;LW —— flags 吸收 ID/CIOI，rights 吸收 NW/NWNR。
+        $result.LowLabel = [bool]($sddl -match 'S:(AI)?\(ML;[^;]*;[^;]*;;;LW')
         $result.EveryoneDeny = [bool]($sddl -match '\(D;[^)]*;;;WD\)')
         $result.CapabilityAces = @(
             [regex]::Matches($sddl, 'S-1-4-[\d-]+') |

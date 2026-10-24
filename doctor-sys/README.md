@@ -31,8 +31,10 @@ doctor-sys.exe acl-read --path "C:\Users\user\Desktop"
 
 - **读原语**（`acl-read` / `proc-list` / `port-probe` / `port-pid` / `selftest`）随时可用。
 - **写原语**（`acl-save` / `acl-restore` / `set-integrity-label` / `remove-deny-ace` / `quarantine-dir` /
-  `snapshot-write` / `snapshot-restore`）需要**正常桌面上下文**。在 DSH 沙箱终端里会被拦，
-  返回 `Win32 错误 5（拒绝访问）`——那是沙箱限制，不是 bug；请在桌面 / 资源管理器里运行，或走面板。
+  `snapshot-write` / `snapshot-restore`）需要**正常桌面上下文**。在 DSH 沙箱终端里会被拦
+  （错误 5 拒绝访问；标签类也可能是 1299），且同一沙箱里微软签名的 icacls 反而放行——
+  这是沙箱对未签名 exe 的差别待遇，不是引擎 bug；请在桌面 / 资源管理器里运行，或走面板
+  （面板的修复在引擎失败时自动回退 icacls）。
 - **`notify`** 在沙箱里 `NIM_ADD` 会被 UIPI 拒绝（`shown:false`）；正常桌面上下文才能弹。
 - **`proc-kill-tree`** 会拒绝 pid 0 / 4 / 自身，但会**杀掉你传入的 pid 及其整棵子树**：
   不要把当前 shell、DSH 宿主或它的父进程 pid 传进去，只传确认是僵尸的 pid；先用 `dryRun` 看清单。
@@ -88,8 +90,18 @@ doctor-sys/target/release/doctor-sys.exe selftest
 - proc-kill-tree 用快照期父子关系近似"树"（原设计写的是 Job 对象，那只适用于自己 spawn 的进程）。
 - 只有 Windows 实现；Unix 上原语表里 ACL / 标签 / 通知一类不适用。
 
-## 接下来（P1+，见 docs/design.md 里程碑）
+## 接入现状（P1，v0.12.0 起）
 
-- 插件 host 在 `DSH_DOCTOR_SYS` 指定 doctor-sys.exe 时优先走它做 ACL 动作，PowerShell 兜底；
-- MCP 工具直接代理原语表；
-- `tools/watch.mjs` 的气泡通知换成本引擎的 notify。
+- **插件已接**：`DSH_DOCTOR_SYS` 指向本 exe 时，`aclSddl` / 桌面标签修复 / 外壳刷新优先走引擎，
+  PowerShell 兜底；协议行为由 `tests/bridge.test.mjs` 守着（CI ubuntu 用假引擎全量验，Windows 验回退）。
+- **watch.mjs 已接**：气泡优先走本引擎的 `notify`，WinForms 兜底。
+- MCP 工具直接代理原语表——还没做。
+
+## 用法示例（插件侧）
+
+```powershell
+# 桌面端 / 系统环境变量里设一次，插件的 ACL 动作就换成引擎：
+setx DSH_DOCTOR_SYS "C:\path\to\doctor-sys.exe"
+```
+
+不设就是原行为（PowerShell），零风险灰度。

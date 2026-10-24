@@ -129,6 +129,14 @@ jobs:
           console.log('integration OK')
           NODE
 
+      - name: doctor-sys bridge (fake engine, full protocol check)
+        shell: bash
+        run: node tests/bridge.test.mjs
+
+      - name: Low-label pattern matrix (SDDL truth table)
+        shell: bash
+        run: node tests/label-pattern.test.mjs
+
   stress:
     name: stress · 30 scans
     runs-on: ubuntu-latest

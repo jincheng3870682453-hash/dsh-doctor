@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.12.0 — 2026-10-24
+
+- **插件 ACL/外壳动作桥接 doctor-sys（P1）**：设 `DSH_DOCTOR_SYS` 指向引擎 exe 后，
+  `aclSddl`（读 SDDL）、桌面标签修复（`set-integrity-label` + `remove-deny-ace`）、外壳刷新（`shell-refresh`）
+  优先走 Rust 引擎，PowerShell 兜底；不设则完全是原行为，零风险灰度。自动巡检（30 秒巡逻）同样受益。
+  桌面备份仍用 icacls `/save` 格式（EXE 的回滚路径认它），引擎只在 icacls 不可用时兜底备份。
+  实测价值：DSH 沙箱对未签名 exe 的 ACL 写有差别待遇（引擎被拒、微软签名的 icacls 放行），
+  引擎失败自动落 icacls 的分层正好扛住这类环境。
+- **Low 标签判据修复 + 统一**：原来只认 `S:(ML;;NW;;;LW)`（DSH 直写形态），
+  漏掉带 AI 控制位/继承标志的形态（`S:AI(ML;ID;NW;;;LW)`——沙箱/引擎写出的样子）。
+  判据收敛为单一常量 `LOW_LABEL_PATTERN`（JS 七处 + PS 一处同源），配套真相表测试
+  `tests/label-pattern.test.mjs`（9 种 SDDL 形态）。
+- **修复流程 fail-closed**：修复前读不到桌面 ACL 不再谎报"已经很干净"（明确失败）；
+  修复后复检读不到不再当"验证通过"（报"无法验证"）；体检里桌面 ACL 读不到新增
+  `desktop-acl-unreadable` 发现（与 PS 版对齐，原来静默漏报）。
+- **watch.mjs 气泡优先走引擎 notify**：`DSH_DOCTOR_SYS` 或仓库 cargo 产物可用时用
+  `Shell_NotifyIconW` 原生气泡，WinForms 兜底；没引擎时行为不变。
+- **桥接协议测试**：`tests/bridge.test.mjs`——没配/配错回退 null、CLI 形式（布尔转旗标）、
+  `ok:false` 原样返回、非 JSON/非 0 退出码回退；CI ubuntu 用假引擎全量验证，Windows 验回退分支。
+- **CI 增补**：doctor-sys job 加"桥接修复端到端"（runner 正常上下文：种 Low 标签 → CLI 修复 →
+  断言 Medium），integration job 加桥接与判据真相表两个测试。
+
 ## v0.11.1 — 2026-10-24
 
 审计 Zcode 的 v0.11.0 后补的洞：

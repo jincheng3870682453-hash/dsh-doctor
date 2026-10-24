@@ -27,6 +27,13 @@ const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 const PREFIX = '/dsh-doctor'
 const CRITICAL_HOST_PACKAGES = ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis']
 
+/**
+ * 桌面 Low 完整性标签的判据。字段结构固定：ML;flags;rights;;;SID。
+ * flags 吸收继承/递归标志（空、ID、CIOI），前缀 (?:AI) 吸收 SACL 自动继承控制位——
+ * DSH 直写的标签是 S:(ML;;NW;;;LW)，SetNamedSecurityInfoW 写的读回是 S:AI(ML;CIOI;NW;;;ME)。
+ */
+const LOW_LABEL_PATTERN = /S:(?:AI)?\(ML;[^;]*;[^;]*;;;LW/
+
 /** 由 apply() 填入；修复时优先用它调 DSH 自己的服务。 */
 let hostContext = null
 
@@ -73,6 +80,38 @@ function powershell(command, timeout = 20000) {
 
 const isWindows = process.platform === 'win32'
 
+/* ── doctor-sys 桥（P1）：DSH_DOCTOR_SYS 指向引擎 exe 时，ACL/外壳动作优先走它 ── */
+
+function doctorSysPath() {
+	const configured = process.env.DSH_DOCTOR_SYS
+	if (typeof configured === 'string' && configured.length > 0 && existsSync(configured)) return configured
+	return null
+}
+
+/**
+ * 调 doctor-sys 原语（CLI 形式，JSON 一行应答）。
+ * 返回解析后的应答对象（含 ok:false 的失败应答）；没配/起不来/输出不合法返回 null，
+ * 调用方据此回退 PowerShell。协议见 doctor-sys/README.md。
+ */
+function doctorSys(op, args = {}, timeout = 20000) {
+	const exe = doctorSysPath()
+	if (exe === null) return null
+	const cli = [op]
+	for (const [key, value] of Object.entries(args)) {
+		if (value === true) cli.push('--' + key)
+		else if (value !== false && value !== null && value !== undefined) cli.push('--' + key, String(value))
+	}
+	try {
+		const run = spawnSync(exe, cli, { windowsHide: true, encoding: 'utf8', timeout })
+		if (run.error || run.status !== 0 || typeof run.stdout !== 'string') return null
+		const line = run.stdout.split(/\r?\n/, 1)[0]
+		const parsed = JSON.parse(line)
+		return typeof parsed === 'object' && parsed !== null ? parsed : null
+	} catch (error) {
+		return null
+	}
+}
+
 function rescueRegistryPath() {
 	return join(dshHome(), 'dsh-doctor', 'rescue.json')
 }
@@ -116,6 +155,11 @@ function quote(value) {
 
 function aclSddl(path) {
 	if (!isWindows) return ''
+	// 引擎优先：一次拿到完整 SDDL（含标签），比再开一个 PowerShell 快一个数量级。
+	const viaEngine = doctorSys('acl-read', { path })
+	if (viaEngine !== null && viaEngine.ok === true && viaEngine.data && typeof viaEngine.data.sddl === 'string') {
+		return viaEngine.data.sddl
+	}
 	const result = powershell('[Console]::Out.Write((Get-Acl -LiteralPath ' + quote(path) + ').Sddl)')
 	return result.ok ? result.out : ''
 }
@@ -217,8 +261,15 @@ function checkDesktopAcl() {
 		return findings
 	}
 	const sddl = aclSddl(desktop)
-	if (sddl.length === 0) return findings
-	if (/S:\(ML;;[^;]*;;;LW/.test(sddl)) {
+	if (sddl.length === 0) {
+		// 读不到 ≠ 干净：静默漏报比误报更危险（PS 版一直有这条，这里对齐）。
+		findings.push(finding('desktop-acl-unreadable', 'medium',
+			'桌面 ACL 读不到，无法判断完整性标签',
+			'引擎和 PowerShell 都没拿到桌面的 SDDL。可能是权限或系统策略问题；修图标前先解决读取。',
+			desktop, null))
+		return findings
+	}
+	if (LOW_LABEL_PATTERN.test(sddl)) {
 		findings.push(finding('desktop-low-label', 'high',
 			'桌面被打了 Low 完整性标签（图标会变白）',
 			'沙箱授写权限的副产物。Explorer 在低完整性目录里取不到图标，所以删缓存没用。修复会改回 Medium，能力 ACE 保留，写入不受影响。',
@@ -617,7 +668,7 @@ const DETECTORS = {
 		const path = expandVars(check.path)
 		if (!existsSync(path)) return []
 		const sddl = aclSddl(path)
-		const isLow = /S:\(ML;;[^;]*;;;LW/.test(sddl)
+		const isLow = LOW_LABEL_PATTERN.test(sddl)
 		const hasDeny = /\(D;[^)]*;;;WD\)/.test(sddl)
 		const hit = check.test === 'low-label' ? isLow : check.test === 'everyone-deny' ? hasDeny : false
 		if (!hit) return []
@@ -856,25 +907,50 @@ function fixDesktopLabelUnlocked() {
 	const desktop = desktopPath()
 	if (!existsSync(desktop)) return { ok: false, message: '找不到桌面目录：' + desktop }
 	const before = aclSddl(desktop)
-	if (!/S:\(ML;;[^;]*;;;LW/.test(before) && !/\(D;[^)]*;;;WD\)/.test(before)) {
+	if (before.length === 0) {
+		// 读不到就动手是瞎修：明确失败，让用户知道当前看不到桌面 ACL 的状态。
+		return { ok: false, message: '读不到桌面 ACL（引擎和 PowerShell 都失败了），不敢动手。可以先重新体检看看详情。' }
+	}
+	if (!LOW_LABEL_PATTERN.test(before) && !/\(D;[^)]*;;;WD\)/.test(before)) {
 		return { ok: true, unchanged: true, message: '桌面 ACL 已经是干净的，不需要修。' }
 	}
 	const backupFile = join(backupDir(), 'desktop-acl-' + Date.now() + '.txt')
-	const save = powershell('icacls ' + quote(desktop) + ' /save ' + quote(backupFile))
-	if (/S:\(ML;;[^;]*;;;LW/.test(before)) {
-		const result = powershell('icacls ' + quote(desktop) + " /setintegritylevel '(OI)(CI)Medium'")
-		if (!result.ok) return { ok: false, message: '改完整性标签失败：' + (result.err || result.out) }
+	// 备份仍用 icacls /save 的格式（EXE 的回滚路径认它）；引擎只在 icacls 不可用时兜底。
+	let save = powershell('icacls ' + quote(desktop) + ' /save ' + quote(backupFile))
+	let engineUsed = false
+	if (!save.ok && doctorSysPath() !== null) {
+		const viaEngine = doctorSys('acl-save', { path: desktop, file: backupFile + '.json' })
+		if (viaEngine !== null && viaEngine.ok === true) save = { ok: true, out: backupFile + '.json' }
+	}
+	if (LOW_LABEL_PATTERN.test(before)) {
+		const viaEngine = doctorSys('set-integrity-label', { path: desktop, label: 'medium', recursive: true }, 120000)
+		if (viaEngine !== null && viaEngine.ok === true) {
+			engineUsed = true
+		} else {
+			const result = powershell('icacls ' + quote(desktop) + " /setintegritylevel '(OI)(CI)Medium'")
+			if (!result.ok) return { ok: false, message: '改完整性标签失败：' + (result.err || result.out) }
+		}
 	}
 	if (/\(D;[^)]*;;;WD\)/.test(before)) {
-		powershell('icacls ' + quote(desktop) + " /remove:d '*S-1-1-0'")
+		const viaEngine = doctorSys('remove-deny-ace', { path: desktop, everyone: true }, 120000)
+		if (viaEngine !== null && viaEngine.ok === true) {
+			engineUsed = true
+		} else {
+			powershell('icacls ' + quote(desktop) + " /remove:d '*S-1-1-0'")
+		}
 	}
 	const after = aclSddl(desktop)
-	const verified = !/S:\(ML;;[^;]*;;;LW/.test(after)
+	// 复检读不到 = 没验证过：宁可报失败（fail-closed），不能拿空串当"没有 Low"。
+	const verified = after.length > 0 && !LOW_LABEL_PATTERN.test(after)
 	if (verified) refreshShellIcons()
 	return {
 		ok: verified,
 		verified,
-		message: verified ? '桌面标签已改回 Medium，并已通知外壳重新取图标。' : '改完复检仍看到 Low 标签，请把这条反馈给我。',
+		message: verified
+			? '桌面标签已改回 Medium，并已通知外壳重新取图标。' + (engineUsed ? '（doctor-sys 引擎）' : '')
+			: after.length === 0
+				? '改完后读不回桌面 ACL，无法验证是否修好。请重新体检确认。'
+				: '改完复检仍看到 Low 标签，请把这条反馈给我。',
 		backup: save.ok ? backupFile : null,
 	}
 }
@@ -1488,6 +1564,9 @@ function autoFixEnabled() {
 /** 让 Explorer 重新取图标（SHChangeNotify），不用重启资源管理器、不闪。 */
 function refreshShellIcons() {
 	if (!isWindows) return false
+	// 引擎优先（原生调用，不起 PowerShell 进程）；没配或失败走 Add-Type。
+	const viaEngine = doctorSys('shell-refresh', {})
+	if (viaEngine !== null && viaEngine.ok === true) return true
 	const script = [
 		"$sig = @'",
 		'using System;',
@@ -1577,7 +1656,7 @@ function startAutoGuard(ctx) {
 			if (!existsSync(desktop)) return
 			const sddl = aclSddl(desktop)
 			if (sddl.length === 0) return
-			const low = /S:\(ML;;[^;]*;;;LW/.test(sddl)
+			const low = LOW_LABEL_PATTERN.test(sddl)
 			const deny = /\(D;[^)]*;;;WD\)/.test(sddl)
 			if (!low && !deny) return
 
@@ -1796,7 +1875,7 @@ function collectEnvironmentSnapshot() {
 		electron: process.versions.electron || null,
 		dshHome: dshHome(),
 		desktop: desktopPath(),
-		desktopLow: /S:\(ML;;[^;]*;;;LW/.test(desktopSddl),
+		desktopLow: LOW_LABEL_PATTERN.test(desktopSddl),
 		desktopDeny: /\(D;[^)]*;;;WD\)/.test(desktopSddl),
 		profiles: profileList,
 		workspaces,
@@ -2131,7 +2210,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]

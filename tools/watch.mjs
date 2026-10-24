@@ -11,9 +11,10 @@
 //   - 连续 3 次失败 => 判"瘫痪" => 弹 Windows 原生气泡提醒（同一问题 10 分钟内只弹一次）；
 //   - 全程只读探测，不重启 DSH、不改任何东西。
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 function arg(name, fallback) {
 	const index = process.argv.indexOf(name)
@@ -38,11 +39,40 @@ function log(line) {
 	process.stdout.write(text)
 }
 
-/** Windows 原生气泡通知（WinForms NotifyIcon，不依赖任何模块）。 */
+/** doctor-sys 引擎可用就返回它的路径：环境变量优先，其次仓库里 cargo 的构建产物。 */
+function enginePath() {
+	const candidates = [
+		process.env.DSH_DOCTOR_SYS,
+		fileURLToPath(new URL('../doctor-sys/target/release/doctor-sys.exe', import.meta.url)),
+	].filter((item) => typeof item === 'string' && item.length > 0)
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate
+	}
+	return null
+}
+
+/** Windows 原生气泡通知：doctor-sys 引擎优先（Shell_NotifyIconW），WinForms 兜底。 */
 function balloon(title, text) {
 	if (process.platform !== 'win32') {
 		log('notify(skip, non-windows): ' + title + ' - ' + text)
 		return
+	}
+	const engine = enginePath()
+	if (engine !== null) {
+		try {
+			const run = spawnSync(engine, ['notify', '--title', title, '--body', text, '--timeoutMs', '10000'],
+				{ windowsHide: true, encoding: 'utf8', timeout: 20000 })
+			const answer = typeof run.stdout === 'string'
+				? (() => { try { return JSON.parse(run.stdout.split(/\r?\n/, 1)[0]) } catch (error) { return null } })()
+				: null
+			if (answer !== null && answer.ok === true && answer.data && answer.data.shown === true) {
+				log('notify via doctor-sys: ' + title)
+				return
+			}
+			log('doctor-sys notify not shown, falling back to WinForms')
+		} catch (error) {
+			log('doctor-sys notify failed, falling back to WinForms: ' + String(error && error.message ? error.message : error))
+		}
 	}
 	const script = [
 		'Add-Type -AssemblyName System.Windows.Forms',

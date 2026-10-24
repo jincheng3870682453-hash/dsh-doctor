@@ -360,8 +360,8 @@ L3 的实现：
 | 阶段 | 内容 | 验收 | 状态 |
 | --- | --- | --- | --- |
 | P0 | doctor-sys.exe：ACL 读写 + 标签 + 通知 + 端口探测 | 单元测试 + 手工在 VM 验证 | **v0.11.0 已落地**（`doctor-sys/`，零依赖 Rust，15 原语含 selftest，随 Release 分发） |
-| P1 | core：检测器 + 修复器 + 快照（TS） | 现有 PowerShell 原型的检测逻辑迁移 | 进行中（插件 `plugin/lib/index.js` 承担；下一步：ACL 动作优先走 doctor-sys，PS 兜底） |
-| P2 | 守护进程 + 原生通知（§5） | 杀 DSH 进程 → 10 s 内收到气泡 | `tools/watch.mjs` 原型；气泡改走 doctor-sys notify 待接 |
+| P1 | core：检测器 + 修复器 + 快照（TS） | 现有 PowerShell 原型的检测逻辑迁移 | 进行中（插件 `plugin/lib/index.js` 承担；**v0.12.0 起 ACL/外壳动作经 `DSH_DOCTOR_SYS` 优先走 doctor-sys，PS 兜底**） |
+| P2 | 守护进程 + 原生通知（§5） | 杀 DSH 进程 → 10 s 内收到气泡 | `tools/watch.mjs` 原型；**v0.12.0 起气泡优先走 doctor-sys notify**；安装向导/自启未做 |
 | P3 | DSH 插件面板（sidebar.panellist + main） | 面板能扫描、能修、能回滚 | **已落地**（`plugin/lib/client.js`） |
 | P4 | MCP + rescue + 升级拦截器 | 外部 agent 能调通 4 个只读工具 | MCP/rescue 已落地；升级拦截器未做 |
 

@@ -32,6 +32,22 @@ jobs:
           $output = ./doctor-sys/target/release/doctor-sys.exe acl-read --path $env:USERPROFILE | ConvertFrom-Json
           if (-not $output.ok -or -not $output.data.sddl) { throw 'acl-read probe failed' }
           Write-Host 'acl-read probe ok'
+      - name: Bridged fix end-to-end (engine-first, PS fallback, honest verify)
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path './doctor-sys/target/release/doctor-sys.exe').Path
+          $fake = Join-Path $env:RUNNER_TEMP 'bridge-home'
+          New-Item -ItemType Directory -Force -Path "$fake/profileuser/Desktop", "$fake/dsh" | Out-Null
+          Set-Content "$fake/profileuser/Desktop/x.txt" 'x'
+          & $exe set-integrity-label --path "$fake/profileuser/Desktop" --label low | Out-Null
+          $env:DSH_HOME = "$fake/dsh"
+          $env:USERPROFILE = "$fake/profileuser"
+          $env:DSH_DOCTOR_SYS = $exe
+          node tools/cli.mjs fix desktop-label
+          if ($LASTEXITCODE -ne 0) { throw 'cli fix exited nonzero' }
+          $after = & $exe acl-read --path "$fake/profileuser/Desktop" | ConvertFrom-Json
+          if ($after.data.integrity -ne 'medium') { throw ('label not medium after fix: ' + $after.data.integrity) }
+          Write-Host 'bridged fix e2e ok (engine-first)'
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-doctor-sys
