@@ -8,7 +8,7 @@
 
 **点一下修复。**
 
-[更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者名单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
+[更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者清单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
 
 [![Version](https://img.shields.io/badge/Version-0.13.9-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
@@ -73,15 +73,13 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 参与贡献：提 bug、写检查包、提 PR |
 | [CHANGELOG.md](CHANGELOG.md) | 技术变更明细 |
 
-## 贡献者
+## 贡献者清单
 
-> **作者是学生**：工作日要上课，issue / PR 一般**集中在周末处理**；看到了都会记下，不用急。
+**[→ 贡献者清单（CONTRIBUTORS.md）](CONTRIBUTORS.md)**
 
-完整名单单独维护在 **[CONTRIBUTORS.md](CONTRIBUTORS.md)**（目前：Relax、yuki）。
+谁报了什么坑、作者的处理节奏、怎么上榜，全部在这个独立文件里。
 
-- [Relax](CONTRIBUTORS.md#relax)：报告「权限给太多、DSH 把自己文件删了」，促成 [`permission-too-broad`](docs/catalog.md) 检查和 [docs/recovery.md](docs/recovery.md)；
-- [yuki](CONTRIBUTORS.md#yuki)：定位「MCP server 加载失败拖垮整个 host」+ 端口漂移问题，促成 `mcp-entry-broken` 检查；
-- [完整名单 & 怎么上榜](CONTRIBUTORS.md)
+> 作者是学生：工作日要上课，issue / PR 一般集中在周末处理。
 
 ## 遇到问题 / 想贡献
 
