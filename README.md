@@ -36,11 +36,13 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 
 ## 安装
 
-**插件（推荐）**：把本仓库 `plugin/` 装成 DSH bundle，侧边栏出现「私人医生」，平时无感，有问题才亮红点。
+**插件（推荐）**：下载 Release 里的 `dsh-doctor-plugin.zip`，解压到固定目录后装成 DSH bundle（这样仓库挪动/删除都不会把插件弄坏）：
 
 ```text
-plugin_manager  install_bundle  target: <本仓库路径>/plugin
+plugin_manager  install_bundle  target: <解压目录>
 ```
+
+也可以直接用仓库里的 `plugin/`（开发用，`link:` 安装，**移动仓库会导致插件失效**）。
 
 **发行包**：[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases) 里按平台取——Windows `dsh-doctor.exe`（自包含，双击即用）；Linux / macOS `dsh-doctor-unix.tar.gz`（需要 Node ≥18）。
 
@@ -78,6 +80,7 @@ node dsh-doctor.mjs fix workspace-entry
 | [docs/traps.md](docs/traps.md) | 踩雷清单 14 类，含根因与手工修复 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |
 | [docs/design.md](docs/design.md) | 架构、版本无关性、通知与逃生设计 |
+| [bugs/](bugs/README.md) | **Bug 图鉴**：遇到过的问题 + 根因 + 修法 + 验证 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本记录 |
 
 ## 安全

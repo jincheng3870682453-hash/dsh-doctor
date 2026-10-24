@@ -125,6 +125,15 @@ if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Remove-Item -LiteralPath $stage -Recurse -Force
 Write-Host 'built dsh-doctor-unix.tar.gz'
 
+# ── 5) 插件包：给"不想用 link 安装"的用户，解压后 install_bundle 指向解压目录 ──
+$pluginZip = Join-Path $release 'dsh-doctor-plugin.zip'
+$pluginStage = Join-Path $env:TEMP ('dsh-doctor-plugin-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $pluginStage -Force | Out-Null
+Copy-Item (Join-Path $root 'plugin\*') $pluginStage -Recurse -Force
+Compress-Archive -Path (Join-Path $pluginStage '*') -DestinationPath $pluginZip -Force
+Remove-Item -LiteralPath $pluginStage -Recurse -Force
+Write-Host 'built dsh-doctor-plugin.zip'
+
 Write-Host ''
 Write-Host 'dist/release/'
 Get-ChildItem -Recurse -File $release | ForEach-Object {

@@ -17,6 +17,7 @@ import { createServer } from 'node:net'
 import * as zlib from 'node:zlib'
 
 import { createRequire } from 'node:module'
+import { Worker } from 'node:worker_threads'
 
 const requireFromHere = createRequire(import.meta.url)
 
@@ -713,8 +714,75 @@ function scan() {
 	return unique
 }
 
-function environment() {
-	return {
+/* ── 异步体检（worker 线程 + 缓存，别卡住宿主）───────────────────────── */
+
+let scanWorker = null
+let scanRequestId = 0
+const scanWaiters = new Map()
+let scanCache = { at: 0, findings: null }
+
+function ensureScanWorker() {
+	if (scanWorker !== null) return scanWorker
+	try {
+		scanWorker = new Worker(new URL('./scan-worker.mjs', import.meta.url))
+		scanWorker.unref()
+		scanWorker.on('message', (message) => {
+			const waiter = scanWaiters.get(message && message.id)
+			if (waiter === undefined) return
+			scanWaiters.delete(message.id)
+			if (message.ok === true) waiter.resolve(message.findings)
+			else waiter.reject(new Error(String(message.message || 'scan worker failed')))
+		})
+		scanWorker.on('error', (error) => {
+			for (const waiter of scanWaiters.values()) waiter.reject(error)
+			scanWaiters.clear()
+			scanWorker = null
+		})
+		scanWorker.on('exit', () => { scanWorker = null })
+	} catch (error) {
+		scanWorker = null
+	}
+	return scanWorker
+}
+
+function scanInWorker() {
+	const worker = ensureScanWorker()
+	if (worker === null) return Promise.reject(new Error('worker unavailable'))
+	const id = (scanRequestId += 1)
+	return new Promise((resolve, reject) => {
+		scanWaiters.set(id, { resolve, reject })
+		try {
+			worker.postMessage({ id })
+		} catch (error) {
+			scanWaiters.delete(id)
+			reject(error)
+			return
+		}
+		setTimeout(() => {
+			if (!scanWaiters.has(id)) return
+			scanWaiters.delete(id)
+			reject(new Error('scan worker timeout'))
+		}, 30000)
+	})
+}
+
+/** 体检结果缓存 8 秒：面板打开、图标轮询、报告生成不会反复全量扫描。 */
+async function scanCached() {
+	const now = Date.now()
+	if (scanCache.findings !== null && now - scanCache.at < 8000) return scanCache.findings
+	try {
+		const findings = await scanInWorker()
+		scanCache = { at: Date.now(), findings }
+		return findings
+	} catch (error) {
+		// worker 起不来（老运行时 / 权限）就退回同步扫描，功能不能因此消失。
+		const findings = scan()
+		scanCache = { at: Date.now(), findings }
+		return findings
+	}
+}
+
+function environment() {	return {
 		platform: process.platform,
 		electron: process.versions.electron || null,
 		execPath: process.execPath,
@@ -741,7 +809,39 @@ function backupDir() {
 	return dir
 }
 
+/** 改 ACL 的互斥锁：自动巡检和手动修复可能同时动手，互相覆盖。 */
+function acquireAclLock() {
+	const file = join(dshHome(), 'dsh-doctor', 'acl.lock')
+	try {
+		mkdirp(dirname(file))
+		if (existsSync(file)) {
+			let age = 0
+			try { age = Date.now() - statSync(file).mtimeMs } catch (error) { age = 0 }
+			if (age < 120000) return null
+			try { unlinkSync(file) } catch (error) { /* 过期锁清掉 */ }
+		}
+		writeFileSync(file, String(process.pid), 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
+function releaseAclLock(file) {
+	try { unlinkSync(file) } catch (error) { /* ignore */ }
+}
+
 function fixDesktopLabel() {
+	const lock = acquireAclLock()
+	if (lock === null) return { ok: false, message: '另一个 ACL 修复正在进行，稍后再试。' }
+	try {
+		return fixDesktopLabelUnlocked()
+	} finally {
+		releaseAclLock(lock)
+	}
+}
+
+function fixDesktopLabelUnlocked() {
 	if (!isWindows) {
 		return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
 	}
@@ -886,6 +986,16 @@ function fixRestorePatchLayer() {
 }
 
 function fixWorkspaceAcl() {
+	const lock = acquireAclLock()
+	if (lock === null) return { ok: false, message: '另一个 ACL 修复正在进行，稍后再试。' }
+	try {
+		return fixWorkspaceAclUnlocked()
+	} finally {
+		releaseAclLock(lock)
+	}
+}
+
+function fixWorkspaceAclUnlocked() {
 	if (!isWindows) return { ok: false, message: '当前平台不支持自动补 ACL，请手动检查目录权限。' }
 	const registry = readWorkspaceRegistry()
 	if (registry === null) return { ok: true, unchanged: true, message: '没有工作区注册表，不需要修。' }
@@ -1137,64 +1247,28 @@ function stampForFile() {
 }
 
 /** 逃生时给网页版 DSH 的交接报告：现状 + 问题清单 + 已经试过什么。 */
-function writeHandoffReport() {
+/** 逃生交接 = 求助报告 + 一段"你先看这个"的话，直接丢给网页版 DSH 就能接着修。 */
+async function writeHandoffReport() {
 	try {
-		const findings = scan()
-		const env = environment()
-		const history = readHistory(10)
-		const lines = []
-		lines.push('# DSH 桌面端 · 交接报告')
-		lines.push('')
-		lines.push('> 生成时间：' + new Date().toLocaleString() + '　平台：' + env.platform + '　工具：dsh-doctor')
-		lines.push('> 这份文件由桌面端「私人医生」生成。把它拖给网页版 DSH，让它接着修。')
-		lines.push('')
-		lines.push('## 先把这段话发给我')
-		lines.push('')
-		lines.push('```text')
-		lines.push('我是从 DSH 桌面端逃过来的：桌面端起不来，或者我修不好。')
-		lines.push('这是桌面端「私人医生」生成的交接报告（本文件）。请按下面的清单逐条帮我处理：')
-		lines.push('每一条都告诉我改了哪些文件、怎么验证、怎么回滚。')
-		lines.push('注意：网页版和桌面端共享同一个 ~/.dsh，修的是同一份数据。')
-		lines.push('```')
-		lines.push('')
-		lines.push('## 体检结果（' + findings.length + ' 条）')
-		lines.push('')
-		if (findings.length === 0) {
-			lines.push('_没有发现问题，可能是启动链路本身的问题，先看崩溃日志。_')
-		}
-		for (const item of findings) {
-			lines.push('### [' + item.severity + '] ' + item.title)
-			lines.push('')
-			if (item.path) lines.push('- 路径：`' + item.path + '`')
-			if (item.detail) lines.push('- 说明：' + item.detail)
-			lines.push('- 可一键修：' + (item.fixId ? '是（' + item.fixId + '）' : '否，需要人工判断'))
-			lines.push('')
-		}
-		lines.push('## 已经试过的修复')
-		lines.push('')
-		if (history.length === 0) {
-			lines.push('_还没有执行过修复。_')
-		} else {
-			for (const entry of history) {
-				lines.push('- ' + entry.at + '　' + entry.id + '　' + (entry.ok === true ? '成功' : '失败') + (entry.backup ? '　备份：`' + entry.backup + '`' : ''))
-				if (entry.message) lines.push('  - ' + entry.message)
-			}
-		}
-		lines.push('')
-		lines.push('## 环境')
-		lines.push('')
-		lines.push('- DSH 目录：`' + env.dshHome + '`')
-		lines.push('- 桌面目录：`' + env.desktop + '`')
-		lines.push('- profile：' + (Array.isArray(env.profiles) ? env.profiles.join('、') : ''))
-		lines.push('- 检查包：' + (Array.isArray(env.packs) && env.packs.length > 0 ? env.packs.join('、') : '无'))
-		lines.push('- Node：' + env.node)
-		lines.push('')
-		lines.push('## 建议的下一步')
-		lines.push('')
-		lines.push('1. 先按上面「可一键修：是」的条目逐条处理（每条都先备份、再改、再验证）。')
-		lines.push('2. 修完重启桌面端验证；如果还起不来，把这次对话里新出现的报错贴回来。')
-		lines.push('3. 不要再把桌面设成工作区——那是图标变白和整桌闪的根。')
-		const text = lines.join('\n')
+		const findings = await scanCached()
+		const report = buildAiReport(findings)
+		const head = [
+			'# DSH 桌面端 · 逃生交接报告',
+			'',
+			'> 由「DSH 私人医生」生成 · ' + new Date().toLocaleString(),
+			'> 桌面端已经修不动了，所以把问题清单交给网页版继续。下面这份是给 AI 看的报告，问题点已按严重度排好。',
+			'',
+			'```text',
+			'我是从 DSH 桌面端逃过来的：桌面端起不来，或者我修不好。',
+			'这份文件是桌面端「私人医生」生成的体检报告，问题点已经列出来了。',
+			'请按严重度从高到低处理；每条都告诉我改了什么、怎么验证、怎么回滚。',
+			'网页版和桌面端共享同一个 ~/.dsh，修的是同一份数据。',
+			'```',
+			'',
+			'---',
+			'',
+		].join('\n')
+		const text = head + report
 		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
 		mkdirp(directory)
 		const file = join(directory, 'dsh-doctor-交接-' + stampForFile() + '.md')
@@ -1251,7 +1325,7 @@ async function rescueWeb() {
 		if (await waitForHttp(previousBase, 5000)) {
 			const previousUrl = tokenizedUrl(previous.port, previous.log)
 			openBrowser(previousUrl)
-			const handoffFile = writeHandoffReport()
+			const handoffFile = await writeHandoffReport()
 			const urlHint = writeUrlHint(previousUrl)
 			return {
 				ok: true,
@@ -1317,7 +1391,7 @@ async function rescueWeb() {
 	try {
 		openBrowser(authenticatedUrl)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }
-	const handoff = writeHandoffReport()
+	const handoff = await writeHandoffReport()
 	const urlHint = writeUrlHint(authenticatedUrl)
 	const lines = ['网页版已启动：' + url]
 	if (urlHint !== null) lines.push('桌面上已写好地址：' + urlHint + '（浏览器没弹出来就手动复制它）')
@@ -1538,8 +1612,8 @@ function openReleasePage(url) {
 
 /* ── 给 AI 的求助报告 ───────────────────────────────────────────────── */
 
-function buildAiReport() {
-	const findings = scan()
+function buildAiReport(findingsParam) {
+	const findings = Array.isArray(findingsParam) ? findingsParam : scan()
 	const env = environment()
 	const history = readHistory(10)
 	const lines = []
@@ -1600,9 +1674,9 @@ function buildAiReport() {
 	return lines.join('\n')
 }
 
-function writeAiReport() {
+function writeAiReport(findingsParam) {
 	try {
-		const markdown = buildAiReport()
+		const markdown = buildAiReport(findingsParam)
 		const directory = existsSync(desktopPath()) ? desktopPath() : join(dshHome(), 'dsh-doctor')
 		mkdirp(directory)
 		const file = join(directory, 'dsh-doctor-求助报告-' + stampForFile() + '.md')
@@ -1634,7 +1708,7 @@ async function handle(req, res) {
 	const path = url.pathname
 	try {
 		if (path === PREFIX + '/status' && req.method === 'GET') {
-			const findings = scan()
+			const findings = await scanCached()
 			const summary = {
 				high: findings.filter(item => item.severity === 'high').length,
 				medium: findings.filter(item => item.severity === 'medium').length,
@@ -1659,11 +1733,11 @@ async function handle(req, res) {
 			return
 		}
 		if (path === PREFIX + '/report' && req.method === 'GET') {
-			send(res, 200, { ok: true, markdown: buildAiReport() })
+			send(res, 200, { ok: true, markdown: buildAiReport(await scanCached()) })
 			return
 		}
 		if (path === PREFIX + '/report/save' && req.method === 'POST') {
-			const file = writeAiReport()
+			const file = writeAiReport(await scanCached())
 			send(res, 200, file === null
 				? { ok: false, message: '报告写入失败，可以直接用「复制」把内容发给 AI。' }
 				: { ok: true, path: file, message: '报告已保存到：' + file })
