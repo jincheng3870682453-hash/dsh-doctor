@@ -89,6 +89,16 @@ powershell -File tools/build.ps1                  # Windows：EXE + Unix 包 + �
 bash tools/package-unix.sh                        # Linux/macOS 包
 ```
 
+## 把开发版装进 DSH 调试
+
+插件是 **profile 级**的，装一次对该 profile 下所有会话生效，重启后仍在。
+
+- **桌面端**：侧边栏 → 插件（Plugins）→ 添加 / 安装 → 选本地目录（指到 `plugin/` 或解压后的插件目录）。桌面端由 Electron 应用自己管包，**命令行装不了**，会提示 `profile "desktop" is managed exclusively by the Electron application`。
+- **非桌面 profile**：`dsh plugin --profile web add "D:\path\to\dsh-doctor\plugin"`。内部就是 pnpm，接受包名 / 本地目录 / git / tarball，装完自动加进 `dsh.profile.bundles` 并启用。
+- **会话里**：`plugin_manager` 的 `install_bundle`，`target` 填**绝对目录**。
+
+根 `package.json` 必须声明 `dsh.bundle.patch`，否则会被判为 `not-a-bundle`。本地目录安装是 `link:` 语义，改完 `plugin/lib/*.js` 重启即可生效。
+
 ## 测试与 CI
 
 - `ci.yml`：三系统冒烟、PowerShell 冒烟、假 DSH 目录上的集成修复、30 次压力扫描；

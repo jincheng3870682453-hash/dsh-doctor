@@ -10,7 +10,7 @@
 
 [**更新记录**](UPDATES.md) · [参与贡献](CONTRIBUTING.md) · [Bug 图鉴](bugs/README.md) · [修复清单](docs/fixable.md)
 
-[![Version](https://img.shields.io/badge/Version-0.9.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.10.2-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
 [![License](https://img.shields.io/badge/License-MIT-4D6BFE)](LICENSE)
@@ -39,15 +39,34 @@ DSH Doctor **不满足于表面的症状清理**。当 DSH 桌面端因底层状
 
 ## 安装
 
-**插件（推荐）**：下载 Release 里的 `dsh-doctor-plugin.zip`，解压到固定目录后装成 DSH bundle（这样仓库挪动/删除都不会把插件弄坏）：
+插件是 **profile 级**的：装一次，该 profile 下所有会话都能用，重启后仍然在。
 
-```text
-plugin_manager  install_bundle  target: <解压目录>
+### 方式一：DSH 应用内安装（推荐，桌面端用这个）
+
+1. 下载 Release 里的 `dsh-doctor-plugin.zip`，**解压到一个固定目录**（别放桌面，免得和图标修复互相干扰）；
+2. 打开 DSH → 左侧边栏 **插件**（Plugins）页 → 点 **添加 / 安装**；
+3. 选**本地目录**，或把解压后含 `package.json` 的那层**绝对路径**粘进去；
+4. 装完默认启用，侧边栏出现「私人医生」；没立即生效就重启一次 DSH。
+
+> 桌面端（`desktop` profile）的插件安装由 Electron 应用自己管理，命令行装不了——会提示
+> `profile "desktop" is managed exclusively by the Electron application`。
+
+### 方式二：命令行（web / tui 等非桌面 profile）
+
+```bash
+dsh plugin --profile web add "D:\dsh-doctor-plugin"
 ```
 
-也可以直接用仓库里的 `plugin/`（开发用，`link:` 安装，**移动仓库会导致插件失效**）。
+它内部就是 pnpm，接受**包名、本地目录、git 地址、tarball**；装完会自动加进 `dsh.profile.bundles` 并启用。
 
-**发行包**：[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases) 里按平台取——Windows `dsh-doctor.exe`（自包含，双击即用）；Linux / macOS `dsh-doctor-unix.tar.gz`（需要 Node ≥18）。
+### 方式三：在会话里让 AI 装
+
+对 AI 说「把这个目录装成插件：`D:\dsh-doctor-plugin`」，它会用 `plugin_manager` 的 `install_bundle` 装。
+
+> 插件包根目录的 `package.json` 必须声明 `dsh.bundle.patch`（本仓库有），否则会被判为 `not-a-bundle`。
+> 开发时也可以直接把仓库的 `plugin/` 目录当成本地目录装（`link:` 语义，改完代码重启生效）。
+
+**其他平台**：[Releases](https://github.com/jincheng3870682453-hash/dsh-doctor/releases) 里按平台取——Windows `dsh-doctor.exe`（自包含，双击即用）；Linux / macOS `dsh-doctor-unix.tar.gz`（需要 Node ≥18）。
 
 **没有 Node 环境？** 用 `dsh-doctor-env-win-x64.zip`：**自带 node.exe**，不需要另外装 Node、也不需要 DSH 能启动——解压后双击 `start.cmd` 即可。
 

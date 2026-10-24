@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.10.3 — 2026-10-24
+
+- **按 DSH 实际的安装机制重写安装文档**（来源：`@deepseek-ai/dsh-plugin-manager` 的 README 与 CLI）：
+  - 桌面端：侧边栏 → 插件（Plugins）→ 添加 / 安装 → 选本地目录或粘贴绝对路径；
+  - 非桌面 profile：`dsh plugin --profile <name> add <spec>`，内部是 pnpm，支持包名 / 本地目录 / git / tarball；
+  - 会话内：`plugin_manager` 的 `install_bundle`，`target` 填绝对目录；
+  - 明确 `desktop` profile 由 Electron 应用独占，命令行会拒绝；
+  - 说明 bundle 必须声明 `dsh.bundle.patch`，否则判为 `not-a-bundle`；安装默认启用，无 HMR 时需重启。
+- CONTRIBUTING 增加「把开发版装进 DSH 调试」，说明本地目录安装是 `link:` 语义。
+
 ## v0.10.2 — 2026-10-24
 
 - README 新增「桌面端已经彻底报废？」一节：说明 EXE 不依赖 DSH / Node / 联网，报废时仍可体检、修图标、生成差异报告；并说明面板按钮与 `dsh-doctor.exe diff` 是同一套逻辑。

@@ -12,6 +12,14 @@
 | 想提交 issue / 找人帮忙 | 面板页脚「环境差异报告」或 `dsh-doctor.exe diff`，生成的 MD **已脱敏** |
 | 连 Node 都没有（Linux/macOS 先装 Node） | Windows 用 `dsh-doctor-env-win-x64.zip`（自带 node.exe） |
 
+## 装插件（三种方式）
+
+1. **桌面端应用内**：侧边栏 → 插件（Plugins）→ 添加 / 安装 → 选本地目录（或把解压后的绝对路径粘进去）。装完默认启用，没生效就重启。
+2. **命令行（非桌面 profile）**：`dsh plugin --profile web add "D:\dsh-doctor-plugin"`。内部是 pnpm，包名 / 本地目录 / git / tarball 都行。
+3. **会话里让 AI 装**：`plugin_manager` 的 `install_bundle`，`target` 填绝对目录。
+
+> 桌面端的 `desktop` profile 由 Electron 应用独占，命令行会拒绝（`profile "desktop" is managed exclusively by the Electron application`）。插件包必须声明 `dsh.bundle.patch`。
+
 ---
 
 ## v0.10.2 — 2026-10-24
