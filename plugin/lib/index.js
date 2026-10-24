@@ -1073,20 +1073,35 @@ function historyPath() {
 	return join(dshHome(), 'dsh-doctor', 'history.jsonl')
 }
 
+/** 修复录超过 256 KB 就轮转到 history.1.jsonl（只留一代），不会一直长。 */
+const HISTORY_ROTATE_BYTES = 256 * 1024
+
 function appendHistory(entry) {
 	try {
 		mkdirp(dirname(historyPath()))
+		try {
+			if (statSync(historyPath()).size > HISTORY_ROTATE_BYTES) {
+				try { unlinkSync(historyPath() + '.1') } catch (error) { /* ignore */ }
+				renameSync(historyPath(), historyPath() + '.1')
+			}
+		} catch (error) { /* 没有旧文件或轮转失败都不影响记录 */ }
 		appendFileSync(historyPath(), JSON.stringify(entry) + '\n', 'utf8')
 	} catch (error) { /* 记录失败不影响修复本身 */ }
 }
 
+function readHistoryLines(file, limit) {
+	if (limit <= 0 || !existsSync(file)) return []
+	try { return readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).slice(-limit) } catch (error) { return [] }
+}
+
 function readHistory(limit = 50) {
-	const file = historyPath()
-	if (!existsSync(file)) return []
-	let lines = []
-	try { lines = readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean) } catch (error) { return [] }
+	// 刚轮转完主文件会很薄：不够 limit 条就从上一代补齐，面板修复录不断档。
+	let lines = readHistoryLines(historyPath(), limit)
+	if (lines.length < limit) {
+		lines = readHistoryLines(historyPath() + '.1', limit - lines.length).concat(lines)
+	}
 	const entries = []
-	for (const line of lines.slice(-limit)) {
+	for (const line of lines) {
 		try { entries.push(JSON.parse(line)) } catch (error) { /* 跳过坏行 */ }
 	}
 	return entries.reverse()
@@ -1315,7 +1330,46 @@ function writeUrlHint(url) {
 	}
 }
 
+/** 逃生启动互斥锁：两个窗口同时点「起网页版」会各起一个实例、互不知情。 */
+function acquireRescueLock() {
+	const file = join(dshHome(), 'dsh-doctor', 'rescue.lock')
+	try {
+		mkdirp(dirname(file))
+		if (existsSync(file)) {
+			let age = 0
+			try { age = Date.now() - statSync(file).mtimeMs } catch (error) { age = 0 }
+			// npx 首次要联网下载，等待上限 3 分钟，锁的过期时间不能比它短。
+			if (age < 180000) return null
+			try { unlinkSync(file) } catch (error) { /* 过期锁清掉 */ }
+		}
+		writeFileSync(file, String(process.pid), 'utf8')
+		return file
+	} catch (error) {
+		return null
+	}
+}
+
+function releaseRescueLock(file) {
+	try { unlinkSync(file) } catch (error) { /* ignore */ }
+}
+
 async function rescueWeb() {
+	const lock = acquireRescueLock()
+	if (lock === null) {
+		return {
+			ok: false,
+			message: '已经有另一个窗口在启动逃生实例（互斥锁 3 分钟内有效）。\n'
+				+ '等它起好后再点一次就会复用；一直没起来就看日志 ~/.dsh/dsh-doctor/rescue-*.log。',
+		}
+	}
+	try {
+		return await rescueWebUnlocked()
+	} finally {
+		releaseRescueLock(lock)
+	}
+}
+
+async function rescueWebUnlocked() {
 	const runtime = findRuntime()
 	if (runtime === null) {
 		return {
