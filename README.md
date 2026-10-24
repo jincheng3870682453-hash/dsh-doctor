@@ -8,6 +8,8 @@
 
 **点一下修复。**
 
+[更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者名单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
+
 [![Version](https://img.shields.io/badge/Version-0.13.9-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
@@ -74,6 +76,8 @@
 ## 贡献者
 
 > **作者是学生**：工作日要上课，issue / PR 一般**集中在周末处理**；看到了都会记下，不用急。
+
+完整名单单独维护在 **[CONTRIBUTORS.md](CONTRIBUTORS.md)**（目前：Relax、yuki）。
 
 - [Relax](CONTRIBUTORS.md#relax)：报告「权限给太多、DSH 把自己文件删了」，促成 [`permission-too-broad`](docs/catalog.md) 检查和 [docs/recovery.md](docs/recovery.md)；
 - [yuki](CONTRIBUTORS.md#yuki)：定位「MCP server 加载失败拖垮整个 host」+ 端口漂移问题，促成 `mcp-entry-broken` 检查；
