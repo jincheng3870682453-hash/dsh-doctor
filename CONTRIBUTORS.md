@@ -17,6 +17,14 @@
   - 新增 [docs/recovery.md](docs/recovery.md)：文件被删后的恢复顺序（Git → 卷影 / 文件历史 / 网盘 → 回收站 → 恢复软件）；
   - `bugs/unverified.md` 增加 U13 条目。
 
+### qq-bridge 用户（匿名）
+
+- 贡献：提交了完整的启动崩溃排障报告，定位到根因是 **profile 注册的 stdio MCP server 加载失败会让 host 直接退出**（`mcp-media.js` 作用域 bug），并顺带发现 **DSH 重启换端口、外部桥接仍连旧端口**的静默故障；
+- 影响：
+  - v0.13.9 新增 [`mcp-entry-broken`](docs/catalog.md) 检查（JS + PS 双端）；
+  - `docs/traps.md` 加 #19（MCP 加载失败 / 作用域 bug 示例）；
+  - 记录"端口漂移"类问题：外部桥接要自己轮询 `baseUrl`，医生不自动改外部配置。
+
 ## 怎么上榜
 
 不用写代码也能上：

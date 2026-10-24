@@ -531,6 +531,53 @@ function Test-DoctorPermissionTooBroad {
     return $findings.ToArray()
 }
 
+function Test-DoctorMcpEntries {
+    $findings = New-Object System.Collections.ArrayList
+    $profiles = Join-Path (Get-DshHome) 'profiles'
+    if (-not (Test-Path -LiteralPath $profiles)) { return $findings.ToArray() }
+    Write-DoctorStep 'Check stdio MCP server entry points'
+
+    $node = $null
+    try { $node = (Get-Command node -ErrorAction Stop).Source } catch { $node = $null }
+    $reported = @{}
+    foreach ($profile in @(Get-ChildItem -LiteralPath $profiles -Directory -ErrorAction SilentlyContinue)) {
+        if ($profile.Name -like '*.stale*') { continue }
+        $patch = Join-Path $profile.FullName 'cordis.patch.yml'
+        if (-not (Test-Path -LiteralPath $patch)) { continue }
+        $text = ''
+        try { $text = Get-Content -LiteralPath $patch -Raw -Encoding UTF8 } catch { continue }
+        $lines = $text -split "`r?`n"
+        for ($index = 0; $index -lt $lines.Count; $index++) {
+            if ($lines[$index] -notmatch '@deepseek-ai/dsh-mcp-client') { continue }
+            $end = [Math]::Min($index + 40, $lines.Count)
+            $block = ($lines[$index..($end - 1)] -join "`n")
+            foreach ($match in [regex]::Matches($block, '([A-Za-z]:[\\/][^"''\s,]+?\.(?:js|mjs|cjs))')) {
+                $entry = $match.Groups[1].Value -replace '/', '\'
+                if ($reported.ContainsKey($entry)) { continue }
+                $reported[$entry] = $true
+                if (-not (Test-Path -LiteralPath $entry)) {
+                    [void]$findings.Add((New-Finding -Id 'mcp-entry-broken' -Severity 'High' -Path $entry `
+                        -Title ('MCP server entry missing: ' + [System.IO.Path]::GetFileName($entry)) `
+                        -Detail ('Profile ' + $profile.Name + ' registers this stdio MCP server but the entry file does not exist. ' +
+                            'Any MCP server that fails to load makes the host exit; the desktop then shows "application failed to start". ' +
+                            'Fix: restore the file or remove its row from cordis.patch.yml.')))
+                    continue
+                }
+                if ($null -ne $node) {
+                    $check = & $node --check $entry 2>&1
+                    if ($LASTEXITCODE -ne 0) {
+                        $reason = (@($check) | Where-Object { $_.Trim().Length -gt 0 } | Select-Object -Last 2) -join ' '
+                        [void]$findings.Add((New-Finding -Id 'mcp-entry-broken' -Severity 'High' -Path $entry `
+                            -Title ('MCP server entry cannot be loaded: ' + [System.IO.Path]::GetFileName($entry)) `
+                            -Detail ('node --check failed: ' + $reason + '. Fix the file or remove its row from cordis.patch.yml.')))
+                    }
+                }
+            }
+        }
+    }
+    return $findings.ToArray()
+}
+
 function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
@@ -541,6 +588,7 @@ function Invoke-DoctorScan {
         'Test-DoctorPluginSourceKind',
         'Test-DoctorCrashLogs',
         'Test-DoctorPluginBootFailure',
+        'Test-DoctorMcpEntries',
         'Test-DoctorPermissionTooBroad'
     )
     $all = New-Object System.Collections.ArrayList

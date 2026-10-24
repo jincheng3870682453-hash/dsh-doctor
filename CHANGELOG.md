@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.9 — 2026-10-24
+
+社区排障报告确认：qq-bridge 的根因不是插件入口，而是 **profile 注册的 stdio MCP server 里有一个加载失败**（`mcp-media.js` 把 `const server` 声明在 `if` 里、却在外面调用 `server.connect()` → ReferenceError）。**任何一个 MCP server 加载失败，DSH host 都会直接退出**，桌面端就是「应用无法启动」，shell 重启后行号变化，看起来像"老崩溃"。
+
+- **新检查 `mcp-entry-broken`**（JS + PS 两套）：解析 profile `cordis.patch.yml` 里的 `@deepseek-ai/dsh-mcp-client` 行，检查入口文件是否存在、`node --check` 是否通过，启动前就能发现会拖垮 host 的入口。
+- `docs/traps.md` 加 #19（含作用域 bug 示例）；`docs/catalog.md` 加第 18 项。
+- 同时记录报告里的第二个问题：DSH 每次重启换 Web 端口，外部桥接只读启动时 `baseUrl` 会一直连旧端口（10114 vs 12377）——这类"端口漂移"要靠外部脚本轮询修正，医生不自动改外部配置。
+
 ## v0.13.8 — 2026-10-24
 
 社区反馈：DSH 启动直接弹「应用无法启动」，错误是 `ReferenceError: server is not defined`，栈指向 `.../default-workspace/qq-bridge/index.js`。

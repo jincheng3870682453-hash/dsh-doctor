@@ -23,6 +23,13 @@
 
 ---
 
+## v0.13.9 — 2026-10-24
+
+- **启动前就能发现"拖垮 host 的 MCP"**：新检查 `mcp-entry-broken` 会读 profile 里注册的 stdio MCP server，入口文件不存在或 `node --check` 失败直接报高危——一个 MCP server 加载失败就会让 DSH 启动即退出。
+- 补了 #19 踩雷条目（含 `const server` 声明在 `if` 里、外面调用的作用域 bug 示例）。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.9)
+
 ## v0.13.8 — 2026-10-24
 
 - **DSH 启动崩溃能定位到插件了**：新检查 `plugin-boot-failure` 会读崩溃日志，直接告诉你"是 `qq-bridge/index.js` 抛了 `ReferenceError: server is not defined`"，并给出恢复按钮和修法。插件和 EXE 两侧都生效。

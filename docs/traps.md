@@ -114,6 +114,26 @@ Get-ChildItem "$env:USERPROFILE\.dsh\profiles" -Recurse -Directory -Filter '@dee
 
 **注意**：这不是 DSH 本体的问题，重装 DSH 没用。
 
+### 19. 一个 MCP server 加载失败，整个 DSH host 直接退出
+
+**症状**：桌面端反复弹「应用无法启动或已意外停止」，日志里同一文件的行号还在变（1113 → 1123 → 1131），看着像"老崩溃"；重装 DSH 没用。
+
+**根因**：`~\.dsh\profiles\<profile>\cordis.patch.yml` 里注册了 stdio MCP server（`@deepseek-ai/dsh-mcp-client`）。**只要有一个 MCP server 加载失败，host 就直接退出**。典型是入口 JS 的作用域 bug：
+```js
+if (something) { const server = createServer() }  // 声明在 if 里
+server.connect()                                    // 在 if 外调用 → ReferenceError: server is not defined
+```
+行号变化是因为 shell 重启后重写了 patch/文件，每次位置不同。
+
+**医生怎么认**：
+- `plugin-boot-failure`：从 crash 日志提取 `ReferenceError` + 插件文件路径；
+- `mcp-entry-broken`（v0.13.9）：启动前静态体检 profile 里注册的每个 MCP 入口，文件不存在 / `node --check` 失败直接报。
+
+**怎么救**：
+1. 启动失败对话框点「禁用第三方插件、备份 profile patch 并重启」；
+2. 修入口 JS（把声明移到 `if` 外，或 `let server` 先声明），或从 `cordis.patch.yml` 删掉该 MCP 行；
+3. 重启桌面端。
+
 ## 三、会话格式类
 
 ### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）

@@ -535,6 +535,56 @@ function checkPatchLayer() {
 	return findings
 }
 
+/**
+ * profile 里注册的 stdio MCP server：任何一条加载失败，host 会直接退出，
+ * 桌面端表现为「应用无法启动或已意外停止」。这里做启动前的静态体检：
+ * 入口文件是否存在、能不能过 `node --check`。
+ */
+function checkMcpEntries() {
+	const findings = []
+	const profilesRoot = join(dshHome(), 'profiles')
+	if (!existsSync(profilesRoot)) return findings
+	let nodeBinary = null
+	for (const candidate of ['node', 'node.exe']) {
+		const probe = spawnSync(candidate, ['--version'], { encoding: 'utf8', timeout: 5000 })
+		if (probe.status === 0) { nodeBinary = candidate; break }
+	}
+	for (const name of readDirNames(profilesRoot)) {
+		if (name.includes('.stale')) continue
+		const patchFile = join(profilesRoot, name, 'cordis.patch.yml')
+		let text = ''
+		try { text = readFileSync(patchFile, 'utf8') } catch (error) { continue }
+		const lines = text.split(/\r?\n/)
+		lines.forEach((line, index) => {
+			if (!line.includes('@deepseek-ai/dsh-mcp-client')) return
+			const block = lines.slice(index, index + 40).join('\n')
+			for (const match of block.matchAll(/([A-Za-z]:[\\/][^"'\s,]+?\.(?:js|mjs|cjs))/g)) {
+				const entry = match[1].replace(/\//g, '\\')
+				if (!existsSync(entry)) {
+					findings.push(finding('mcp-entry-broken', 'high',
+						'MCP server 入口文件不存在：' + entry.split('\\').pop(),
+						'profile「' + name + '」注册了这个 stdio MCP server，但入口文件不存在。'
+							+ '**任何一个 MCP server 加载失败，DSH host 都会直接退出**，桌面端就是「应用无法启动或已意外停止」。'
+							+ '修复：补回该文件，或从 cordis.patch.yml 里移除这一行。',
+						entry, null))
+					continue
+				}
+				if (nodeBinary === null) continue
+				const check = spawnSync(nodeBinary, ['--check', entry], { encoding: 'utf8', timeout: 5000 })
+				if (check.status !== 0) {
+					const reason = String(check.stderr || '').split(/\r?\n/).filter(item => item.trim().length > 0).slice(-2).join(' ')
+					findings.push(finding('mcp-entry-broken', 'high',
+						'MCP server 入口无法加载：' + entry.split('\\').pop(),
+						'`node --check` 失败：' + (reason || '未知语法错误') + '。'
+							+ 'DSH 启动时只要有一个 MCP server 加载失败，host 就直接退出。修复该文件，或先从 patch 里移除这一行。',
+						entry, null))
+				}
+			}
+		})
+	}
+	return findings
+}
+
 /** PATH 里指向不存在文件的 dsh 命令，是"命令莫名其妙不工作"的常见根。 */
 function checkPathVariable() {
 	const findings = []
@@ -683,6 +733,7 @@ const DETECTORS = {
 	'session-legacy-kind': () => checkLegacySessions(),
 	'credentials-version': () => checkCredentials(),
 	'patch-layer-missing': () => checkPatchLayer(),
+	'mcp-entry-broken': () => checkMcpEntries(),
 	'path-dead-dsh': () => checkPathVariable(),
 	'rescue-instance-dead': () => checkRescueInstance(),
 	'workspace-not-writable': () => checkWorkspaceWritability(),
@@ -792,6 +843,7 @@ function scan() {
 		checkLegacySessions,
 		checkCredentials,
 		checkPatchLayer,
+		checkMcpEntries,
 		checkPathVariable,
 		checkRescueInstance,
 		checkWorkspaceWritability,
