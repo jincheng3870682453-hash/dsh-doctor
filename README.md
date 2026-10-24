@@ -51,6 +51,20 @@ plugin_manager  install_bundle  target: <解压目录>
 
 **没有 Node 环境？** 用 `dsh-doctor-env-win-x64.zip`：**自带 node.exe**，不需要另外装 Node、也不需要 DSH 能启动——解压后双击 `start.cmd` 即可。
 
+### 桌面端已经彻底报废？
+
+DSH 起不来、面板打不开、连网页版都进不去的时候，**插件里的功能一个也用不上**。这时用 `dsh-doctor.exe`——它不依赖 DSH、不依赖 Node、不联网，双击就能：
+
+| 做什么 | 操作 |
+|---|---|
+| 体检 | `dsh-doctor.exe scan`，或菜单选 `1` |
+| 修桌面图标 | 菜单选 `2` |
+| 生成环境差异报告（可提交 issue） | `dsh-doctor.exe diff`，或菜单选 `8` |
+
+面板里的「环境差异报告」按钮和 `dsh-doctor.exe diff` 是同一套逻辑、同一份基线，平时用面板就行，报废时用 EXE。
+
+> 写文件、改权限请**在桌面或资源管理器里双击**运行；在 DSH 的沙箱终端里跑，写操作可能被限制（EXE 会打印报告并提示手动复制）。
+
 ```bash
 node dsh-doctor.mjs scan        # 只读体检
 node dsh-doctor.mjs fix workspace-entry

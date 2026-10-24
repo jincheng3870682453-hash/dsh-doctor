@@ -423,13 +423,25 @@ function Get-DoctorEnvironmentSnapshot {
         }
     } catch { }
 
+    # 安装位置不写死：先看常见安装目录，再从正在运行的桌面端进程反查。
     $candidates = @(
         (Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh'),
         (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\@deepseek-ai\dsh-desktop'),
-        'E:\dsh',
-        'C:\dsh'
+        (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\DeepSeek Harness'),
+        (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'DeepSeek Harness'),
+        (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DeepSeek Harness')
     )
-    foreach ($candidate in $candidates) {
+    try {
+        $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'DeepSeek|dsh' })
+        foreach ($process in $running) {
+            try {
+                if (-not [string]::IsNullOrWhiteSpace($process.Path)) {
+                    $candidates += (Split-Path -Parent $process.Path)
+                }
+            } catch { }
+        }
+    } catch { }
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         if (Test-Path -LiteralPath $candidate) {
             $snapshot.Installs += [pscustomobject]@{ Path = $candidate; Exists = $true }

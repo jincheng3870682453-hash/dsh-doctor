@@ -50,5 +50,5 @@ dsh-doctor.exe diff             # Windows EXE：同上（无 Node 环境）
 | 当前主机名 | `<machine>` |
 | `name@example.com` | `user@example.com` |
 
-非用户目录的路径（如 `G:\PV项目`）会保留——那是定位问题所必需的。
+非用户目录的路径（如 `D:\项目名`）会保留——那是定位问题所必需的。
 
