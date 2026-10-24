@@ -116,6 +116,22 @@ docs: 文档
 chore: 杂项
 ```
 
+## 发布到 npm（维护者）
+
+插件以 **`dsh-doctor-plugin`** 发布（`dsh-doctor` 是第三方同名包，别发错）。
+
+```powershell
+cd plugin
+npm pack --dry-run        # 必须含 lib/scan-worker.mjs，应显示 9 files
+npm login --auth-type=web # 账号是安全密钥型 2FA，浏览器里按一下
+npm publish --access public --auth-type=web
+npm view dsh-doctor-plugin version
+```
+
+- 非 TTY 环境下 npm 会把认证 URL 打码，必须在**持久终端**里跑；
+- 发布后注册表会先显示 `0.0.0-stage` 占位，约 1 分钟出正式版本，`latest` 自动指过去；
+- 旧账号 `jinchengszj` 被 npm 安全自动化冻结过，与代码无关，发布走 `jinchengszj123`。
+
 ## 安全与隐私
 
 - 报告**已自动脱敏**（用户名 / 主机名 / 邮箱 / 用户主目录 → `user` / `<machine>` / `user@example.com`），但非用户目录的路径会保留，**提交前扫一眼**；

@@ -6,17 +6,18 @@
 
 | 你的情况 | 用哪个 |
 |---|---|
-| DSH 正常，想平时体检 / 一键修 | **插件面板**（推荐，装 `dsh-doctor-plugin.zip`） |
+| DSH 正常，想平时体检 / 一键修 | **插件面板**（推荐，npm 包 `dsh-doctor-plugin`） |
 | 没有 Node、没有命令行 | **`dsh-doctor.exe`**（自包含，双击即用） |
 | DSH 桌面端已经彻底报废 | **`dsh-doctor.exe`**——不依赖 DSH、不依赖 Node、不联网，仍可体检 / 修图标 / 生成差异报告 |
 | 想提交 issue / 找人帮忙 | 面板页脚「环境差异报告」或 `dsh-doctor.exe diff`，生成的 MD **已脱敏** |
 | 连 Node 都没有（Linux/macOS 先装 Node） | Windows 用 `dsh-doctor-env-win-x64.zip`（自带 node.exe） |
 
-## 装插件（三种方式）
+## 装插件（四种方式）
 
-1. **桌面端应用内**：侧边栏 → 插件 → 添加，弹出「添加插件」对话框（输入框支持**包名 / GitHub 仓库地址 / 本地目录路径**）。把解压后的绝对目录粘进去，例如 `D:\dsh-doctor-plugin`，点安装。装完默认启用，没生效就重启。
-2. **命令行（非桌面 profile）**：`dsh plugin --profile web add "D:\dsh-doctor-plugin"`。内部是 pnpm，包名 / 本地目录 / git / tarball 都行。
-3. **会话里让 AI 装**：`plugin_manager` 的 `install_bundle`，`target` 填绝对目录。
+1. **npm 包名（最快）**：应用内「添加插件」对话框直接填 `dsh-doctor-plugin`，或用 `dsh plugin --profile web add dsh-doctor-plugin`。别填 `dsh-doctor`（第三方同名包）。
+2. **本地目录**：下载 `dsh-doctor-plugin.zip` 解压到固定目录，在「添加插件」对话框粘**绝对目录**。
+3. **命令行（非桌面 profile）**：`dsh plugin --profile web add "D:\dsh-doctor-plugin"`，内部是 pnpm，包名 / 目录 / git / tarball 都行。
+4. **会话里让 AI 装**：`plugin_manager` 的 `install_bundle`，`target` 填绝对目录或包名。
 
 > 两个坑：① 桌面端的 `desktop` profile 由 Electron 应用独占，命令行会拒绝（`profile "desktop" is managed exclusively by the Electron application`）；② **别填本仓库 GitHub 地址**——bundle 在 `plugin/` 子目录，仓库根不是 package，会被判 `not-a-bundle`；要远程装先 `git clone`，再填 `...\dsh-doctor\plugin`。
 

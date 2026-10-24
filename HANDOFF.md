@@ -23,6 +23,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 |---|---|
 | 最新 Release | `v0.13.1`（5 个资产：exe / doctor-sys.exe / unix tar / 环境包 / 插件 zip） |
 | 插件版本 | `plugin/package.json` → 0.13.1 |
+| npm | **`dsh-doctor-plugin@0.13.1`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
 | 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
 | 桌面端运行时 | 本机 `E:\dsh`，DSH 0.2.1-rc.2，Electron 44.x |
