@@ -71,6 +71,29 @@ jobs:
           $out = ./doctor-sys/target/release/doctor-sys.exe selftest | ConvertFrom-Json
           if (-not $out.data.ok) { throw 'doctor-sys selftest failed' }
           Write-Host 'doctor-sys selftest ok'
+      - name: Write-primitive smoke (runner has a normal desktop context)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          $exe = './doctor-sys/target/release/doctor-sys.exe'
+          $probe = Join-Path $env:RUNNER_TEMP 'doctor-sys-probe'
+          $snap = Join-Path $env:RUNNER_TEMP 'doctor-sys-snap'
+          New-Item -ItemType Directory -Force -Path $probe | Out-Null
+          Set-Content -LiteralPath (Join-Path $probe 'a.txt') -Value 'x' -Encoding UTF8
+          $low = & $exe set-integrity-label --path $probe --label low | ConvertFrom-Json
+          if (-not $low.ok) { throw ('set-integrity-label low failed: ' + $low.error) }
+          $medium = & $exe set-integrity-label --path $probe --label medium | ConvertFrom-Json
+          if (-not $medium.ok) { throw ('set-integrity-label medium failed: ' + $medium.error) }
+          $saved = & $exe snapshot-write --paths $probe --destDir $snap | ConvertFrom-Json
+          if (-not $saved.ok) { throw ('snapshot-write failed: ' + $saved.error) }
+          $restored = & $exe snapshot-restore --snapshotDir $snap | ConvertFrom-Json
+          if (-not $restored.ok) { throw ('snapshot-restore failed: ' + $restored.error) }
+          $renamed = & $exe quarantine-dir --path $probe | ConvertFrom-Json
+          if (-not $renamed.ok) { throw ('quarantine-dir failed: ' + $renamed.error) }
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'doctor-sys-probe') -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem $env:RUNNER_TEMP -Filter 'doctor-sys-probe*' -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $snap -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'doctor-sys write primitives ok'
 
   integration:
     name: integration · fix on a fake DSH home

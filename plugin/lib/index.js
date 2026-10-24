@@ -1339,13 +1339,13 @@ function acquireRescueLock() {
 			let age = 0
 			try { age = Date.now() - statSync(file).mtimeMs } catch (error) { age = 0 }
 			// npx 首次要联网下载，等待上限 3 分钟，锁的过期时间不能比它短。
-			if (age < 180000) return null
+			if (age < 180000) return { busy: true }
 			try { unlinkSync(file) } catch (error) { /* 过期锁清掉 */ }
 		}
 		writeFileSync(file, String(process.pid), 'utf8')
-		return file
+		return { file }
 	} catch (error) {
-		return null
+		return { error: String(error && error.message ? error.message : error) }
 	}
 }
 
@@ -1355,17 +1355,19 @@ function releaseRescueLock(file) {
 
 async function rescueWeb() {
 	const lock = acquireRescueLock()
-	if (lock === null) {
+	if (lock.busy === true) {
 		return {
 			ok: false,
 			message: '已经有另一个窗口在启动逃生实例（互斥锁 3 分钟内有效）。\n'
 				+ '等它起好后再点一次就会复用；一直没起来就看日志 ~/.dsh/dsh-doctor/rescue-*.log。',
 		}
 	}
+	// 锁建不起来（目录不可写等）不该拦住逃生本身：直接继续，只是失去互斥保护。
+	if (typeof lock.file !== 'string') return await rescueWebUnlocked()
 	try {
 		return await rescueWebUnlocked()
 	} finally {
-		releaseRescueLock(lock)
+		releaseRescueLock(lock.file)
 	}
 }
 

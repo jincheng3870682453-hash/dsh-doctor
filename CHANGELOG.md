@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.1 — 2026-10-24
+
+审计 Zcode 的 v0.11.0 后补的洞：
+
+- **CI 补上写原语冒烟**：`doctor-sys` job 原来只跑 selftest + 只读探针，写原语（`set-integrity-label` / `snapshot-write` / `snapshot-restore` / `quarantine-dir`）零覆盖；现在在 runner 的正常桌面上下文里跑一遍。
+- **`doctor-sys/README` 补「运行上下文」**：写原语在 DSH 沙箱内会被拒（Win32 5），`notify` 被 UIPI 拒（`shown:false`），`proc-kill-tree` 会杀掉传入 pid 的整棵树（别传当前 shell / 父进程 pid）。
+- **救援锁区分"忙"与"锁建不起来"**：以前 IO 失败也报"另一个窗口在启动"，误导；现在锁失败不阻塞逃生，只是失去互斥保护。
+- **HANDOFF 快照版本号修正**（0.10.4 → 0.11.1）。
+
 ## v0.11.0 — 2026-10-24
 
 - **Rust 原语引擎 `doctor-sys.exe` 落地（设计文档 D1/§9 的 P0 里程碑）**：
