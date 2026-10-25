@@ -10,7 +10,7 @@
 
 [更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者清单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
 
-[![Version](https://img.shields.io/badge/Version-0.13.14-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.14.0-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
@@ -27,10 +27,11 @@
 
 | 你的系统 | 下载 | 怎么用 |
 |---|---|---|
-| Windows | **`dsh-doctor.exe`** | 双击 → 选 `1` 体检 / `2` 修桌面图标 / `8` 生成报告 |
-| Windows，连 Node 都没装 | **`dsh-doctor-env-win-x64.zip`** | 解压 → 双击 `start.cmd` |
+| Windows | **`dsh-doctor.exe`** | 双击 → 选 `1` 体检 / `2` 修桌面图标 / `7` 起网页版 / `8` 生成报告 |
+| Windows，连 Node 都没装 | **`dsh-doctor-env-win-x64.zip`** | 解压 → 双击 `start.cmd`（自带 Node） |
 | Linux / macOS | **`dsh-doctor-unix.tar.gz`** | 解压 → `./dsh-doctor.sh`（需要 Node ≥18） |
-| 想要纯二进制（不依赖 PowerShell） | **`dsh-doctor-native.exe`** | `scan` / `fix desktop-label`（Rust 原生，P1：8 项检查 + 3 个修复） |
+
+**只发这 3 个文件**；`doctor-sys.exe` / `dsh-doctor-native.exe` 是内部组件，不再单独下载。
 
 它不依赖 DSH 能不能启动。生成的报告**已自动脱敏**，可以直接提 issue 或丢给任何 AI。
 
@@ -42,7 +43,7 @@
 
 - **应用内**：侧边栏 → 插件 → 添加，填 **`dsh-doctor-plugin`** → 安装
 - **命令行**：`dsh plugin --profile <name> add dsh-doctor-plugin`
-- **离线 / 本地目录**：下载 `dsh-doctor-plugin.zip` 解压，在「添加插件」里粘解压目录
+- **离线 / 本地目录**：`git clone` 本仓库，在「添加插件」里粘 `...\dsh-doctor\plugin`（仓库根不是 package，别直接填 GitHub 地址）
 
 > 别装 `dsh-doctor`——那是第三方的同名包。详细安装见 **[docs/install.md](docs/install.md)**。
 

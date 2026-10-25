@@ -23,6 +23,13 @@
 
 ---
 
+## v0.14.0 — 2026-10-25
+
+- **下载只认 3 个文件**：Windows 用 `dsh-doctor.exe`，没 Node 用 `dsh-doctor-env-win-x64.zip`，Linux/macOS 用 `dsh-doctor-unix.tar.gz`。`doctor-sys.exe` / `native.exe` / 插件 zip 不再作为下载项发布。
+- npm 包首页重写：第一屏告诉你「DSH 还能用就装插件」，第二屏告诉你「起不来就下载这 3 个文件」。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.14.0)
+
 ## v0.13.14 — 2026-10-25
 
 - **权限过宽的旧会话可一键修**：`danger-full-access` 会话现在有「一键修复」，会把它们改回 `workspace-write + ask`（先备份、跳过当前会话；当前会话用 `/permission` 自己切）。

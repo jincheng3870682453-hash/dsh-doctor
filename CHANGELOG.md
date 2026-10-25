@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.0 — 2026-10-25
+
+**发行简化：只保留 3 个下载文件**，其余全部收进内部组件。
+
+- Release 资产从 6 个减到 **3 个**：`dsh-doctor.exe`（Windows）、`dsh-doctor-env-win-x64.zip`（无 Node 环境包）、`dsh-doctor-unix.tar.gz`（Linux/macOS）。
+- `doctor-sys.exe`、`dsh-doctor-native.exe`、`dsh-doctor-plugin.zip` 不再作为下载项发布；插件安装走 npm 包名或 `git clone` 后指向 `plugin/`。
+- npm 包 README 重写：第一段就是「DSH 还能用 → 装插件」，第二段是「DSH 起不来 → 只下载这 3 个文件」的表格。
+- 根 README 同步简化下载表；`docs/install.md` 去掉插件 zip 的离线安装说明。
+- Rust 原生 CLI（`doctor-sys` 的 `scan`/`fix`）继续作为内部能力维护；完整替换主 EXE 需要把逃生/报告/差异等命令也迁进 Rust（P2）。
+
 ## v0.13.14 — 2026-10-25
 
 - **27 个 danger-full-access 会话现在能一键修**：`permission-too-broad` 带 `fixId`。修复会往每个旧会话日志末尾追加合法的 `permission/preset` + `sandbox/mode` + `approval/policy` 事件（回放时最后生效），同步更新投影缓存；原会话文件与缓存先备份，**跳过当前正在用的会话**（它需要 `/permission` 自己切）。实测合成会话：追加 seq 连续、缓存同步、备份齐全。
