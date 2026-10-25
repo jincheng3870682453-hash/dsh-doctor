@@ -62,6 +62,7 @@
 | | |
 |---|---|
 | [docs/install.md](docs/install.md) | 安装方式（npm / 本地 zip / 命令行 / AI）与桌面端限制 |
+| [docs/for-contributors.md](docs/for-contributors.md) | **给贡献者的架构速览**：架构图、体检/修复流水线、两种运行时、怎么加检查 |
 | [docs/recovery.md](docs/recovery.md) | **文件被 DSH 删了怎么救**：Git / 卷影 / 回收站 / 恢复软件 / 防复发 |
 | [docs/fixable.md](docs/fixable.md) | 修复清单：按症状列出能修 / 只查，含根因 |
 | [docs/traps.md](docs/traps.md) | 踩雷清单（16 类），含根因与手工修法 |
