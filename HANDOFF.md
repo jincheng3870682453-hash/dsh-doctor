@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-10-24 · 当前版本 **v0.14.0** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-10-24 · 当前版本 **v0.14.1** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 
@@ -21,9 +21,9 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 
 | 项 | 值 |
 |---|---|
-| 最新 Release | `v0.14.0`（**3 个资产**：exe / unix tar / 环境包） |
-| 插件版本 | `plugin/package.json` → 0.14.0 |
-| npm | **`dsh-doctor-plugin@0.14.0`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
+| 最新 Release | `v0.14.1`（**3 个资产**：exe / unix tar / 环境包） |
+| 插件版本 | `plugin/package.json` → 0.14.1 |
+| npm | **`dsh-doctor-plugin@0.14.1`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
 | 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
 | 桌面端运行时 | 本机 `E:\dsh`，DSH 0.2.1-rc.2，Electron 44.x |
@@ -148,7 +148,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 30 | 插件 ACL/外壳动作桥接 doctor-sys（P1） | 已实现 | `DSH_DOCTOR_SYS` 指向 exe 时 `aclSddl` / `fixDesktopLabelUnlocked` / `refreshShellIcons` 优先走引擎，PowerShell 兜底；`tests/bridge.test.mjs` 进 CI ubuntu |
 | 31 | watch.mjs 气泡走引擎 notify | 已实现 | `enginePath()`：`DSH_DOCTOR_SYS` 或仓库 cargo 产物优先，WinForms 兜底 |
 | 32 | MCP 代理引擎原语表 | 已实现 | `doctor_sys_list` + `doctor_sys`：读原语直通，写原语 dryRun+一次性 token 两段式（5 分钟过期、参数须一致）；`tests/mcp.test.mjs` 进 CI（ubuntu 无引擎路径 + windows 有引擎路径）；serverInfo 版本改为跟 package.json |
-| 33 | npm 上架 | **已发布** | 包名 **`dsh-doctor-plugin`**，latest `0.14.0`，发布账号 `jinchengszj123`（安全密钥型 2FA）。`dsh-doctor` 已被第三方同名包占用（astra3294/dsh-doctor 0.4.3），注意甄别。旧账号 `jinchengszj` 因"新号+新设备登录+首次发布+误用恢复码当 OTP"被 npm 安全自动化临时冻结，与代码无关，可忽略。npm 处理期会短暂显示 `0.0.0-stage` 占位，扫描完成后出现正式版本 |
+| 33 | npm 上架 | **已发布** | 包名 **`dsh-doctor-plugin`**，latest `0.14.1`，发布账号 `jinchengszj123`（安全密钥型 2FA）。`dsh-doctor` 已被第三方同名包占用（astra3294/dsh-doctor 0.4.3），注意甄别。旧账号 `jinchengszj` 因"新号+新设备登录+首次发布+误用恢复码当 OTP"被 npm 安全自动化临时冻结，与代码无关，可忽略。npm 处理期会短暂显示 `0.0.0-stage` 占位，扫描完成后出现正式版本 |
 | 34 | bundle 标识漂移（包名/依赖名/client id 不一致） | 已实现 | `bundle-identity-drift`：宿主正常但图标/面板消失的隐形杀手。DSH client-modules 用**包名**标识浏览器模块；改包名后必须同步 `cordis.patch.yml` 的 `id/name` 和 `client.js` 的 `__ModuleLoader__.load({ id })`。案例见 `bugs/11-bundle-identity-drift.md` |
 | 35 | 插件版本与运行时不一致 | 已实现 | `bundle-version-skew`：profile 里 `@deepseek-ai/*` 固定在旧版本 → 兼容性守卫禁用（列表里有、功能没有）。本机实测 subagent-codex/claude-code 仍 rc.1 |
 | 36 | runtime.json 版本过期 | 已实现 | `runtime-metadata-stale`：桌面端更新后 `~/.dsh/dsh-runtimes/.../runtime.json` 不刷新（本机仍写 rc.2）；Electron 宿主里用 app.asar 比对 |

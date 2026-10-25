@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.14.1 — 2026-10-25
+
+修「网页版明明打开了，医生却提示逃生失败 / 页面报 Failed to fetch」：
+
+- **根因**：Windows 的 `dsh.cmd` shim 把子进程 stdout 写进自己的控制台，Node 重定向抓不到 `dsh web` 打印的 **token URL**；医生拿不到 token，浏览器打开的是不带 token 的地址（401），面板又按"没起来"处理。
+- **修复**：解析出 `node_modules/@deepseek-ai/dsh/lib/bin.js`，用 `node` 直接启动（输出能落盘）；统一加 `--no-open` 避免双开浏览器；HTTP 就绪后最多等 3 秒补抓 token；npx 兜底从 `@latest` 改为 `@next`（与桌面端 rc.3 对齐）。
+- 实测：新起实例的日志 1223 字节，含 `?token=...`，返回消息明确"已用带 token 的地址打开浏览器"。
+
 ## v0.14.0 — 2026-10-25
 
 **发行简化：只保留 3 个下载文件**，其余全部收进内部组件。

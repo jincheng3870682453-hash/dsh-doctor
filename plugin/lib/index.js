@@ -1613,9 +1613,22 @@ function findRuntime() {
 	const npx = shell(isWindows ? 'where.exe npx' : 'which -a npx 2>/dev/null || command -v npx 2>/dev/null')
 	if (npx.ok && npx.out.length > 0) {
 		const first = pick(npx.out)
-		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@latest'], label: 'npx @deepseek-ai/dsh@latest', kind: 'npx' }
+		if (first && existsSync(first)) return { command: first, args: ['-y', '@deepseek-ai/dsh@next'], label: 'npx @deepseek-ai/dsh@next', kind: 'npx' }
 	}
 	return null
+}
+
+/**
+ * Windows 的 dsh.cmd shim 会把子进程 stdout 写到自己的控制台，Node 的管道/文件
+ * 重定向抓不到 token。直接解析出 node_modules/.../dsh/lib/bin.js，用 node 启动。
+ */
+function nodeEntryFor(runtime) {
+	if (!isWindows || runtime === null) return null
+	const command = String(runtime.command || '')
+	if (!/\.(cmd|bat)$/i.test(command)) return null
+	const bin = join(dirname(command), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+	if (!existsSync(bin)) return null
+	return { command: 'node', prefix: [bin], label: 'node ' + bin }
 }
 
 function portFree(port) {
@@ -1796,16 +1809,23 @@ async function rescueWebUnlocked() {
 	const stdio = logFd >= 0 ? ['ignore', logFd, logFd] : 'ignore'
 
 	try {
+		const direct = nodeEntryFor(runtime)
 		if (isWindows) {
-			// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
-			const isBatch = /\.(cmd|bat)$/i.test(runtime.command)
-			const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : runtime.command
-			const args = isBatch
-				? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port)])
-				: runtime.args.concat(['web', '--port', String(port)])
-			spawn(command, args, { cwd: homedir(), windowsHide: true, stdio, detached: true }).unref()
+			if (direct !== null) {
+				spawn(direct.command, direct.prefix.concat(['web', '--port', String(port), '--no-open']), {
+					cwd: homedir(), windowsHide: true, stdio, detached: true,
+				}).unref()
+			} else {
+				// Windows 下 Node 不能直接 spawn .cmd/.bat（会抛 EINVAL），必须套一层 cmd.exe /c。
+				const isBatch = /\.(cmd|bat)$/i.test(runtime.command)
+				const command = isBatch ? (process.env.ComSpec || 'cmd.exe') : runtime.command
+				const args = isBatch
+					? ['/c', runtime.command].concat(runtime.args, ['web', '--port', String(port), '--no-open'])
+					: runtime.args.concat(['web', '--port', String(port), '--no-open'])
+				spawn(command, args, { cwd: homedir(), windowsHide: true, stdio, detached: true }).unref()
+			}
 		} else {
-			spawn(runtime.command, runtime.args.concat(['web', '--port', String(port)]), {
+			spawn(runtime.command, runtime.args.concat(['web', '--port', String(port), '--no-open']), {
 				cwd: homedir(), stdio, detached: true,
 			}).unref()
 		}
@@ -1827,7 +1847,12 @@ async function rescueWebUnlocked() {
 		}
 	}
 	writeRescueRegistry({ port, url, log: logFile, startedAt: new Date().toISOString() })
-	const authenticatedUrl = tokenizedUrl(port, logFile)
+	let authenticatedUrl = tokenizedUrl(port, logFile)
+	// node 启动后输出可能比 HTTP 就绪晚几十毫秒，给 token 最多 3 秒。
+	for (let attempt = 0; attempt < 10 && authenticatedUrl.indexOf('token=') < 0; attempt += 1) {
+		await new Promise(resolve => setTimeout(resolve, 300))
+		authenticatedUrl = tokenizedUrl(port, logFile)
+	}
 	try {
 		openBrowser(authenticatedUrl)
 	} catch (error) { /* 浏览器打不开也不影响服务 */ }

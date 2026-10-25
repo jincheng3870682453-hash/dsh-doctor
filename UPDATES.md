@@ -23,6 +23,12 @@
 
 ---
 
+## v0.14.1 — 2026-10-25
+
+- **修「网页版打开了但医生提示逃生失败」**：`dsh.cmd` shim 吞掉了带 token 的输出，医生抓不到 token 就以为没起来。现在直接用 `node` 启动 `bin.js`，抓 token 再打开浏览器，页面不会再报 `Failed to fetch`。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.14.1)
+
 ## v0.14.0 — 2026-10-25
 
 - **下载只认 3 个文件**：Windows 用 `dsh-doctor.exe`，没 Node 用 `dsh-doctor-env-win-x64.zip`，Linux/macOS 用 `dsh-doctor-unix.tar.gz`。`doctor-sys.exe` / `native.exe` / 插件 zip 不再作为下载项发布。
