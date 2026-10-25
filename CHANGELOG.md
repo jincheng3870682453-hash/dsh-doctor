@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.12 — 2026-10-25
+
+修 v0.13.11 引入的 EXE 问题，以及「起网页版（逃生）卡飞」：
+
+- **PS 检查表语法/空值修复**：`Test-DoctorPluginBootFailure` 的续行符后有空格导致内嵌脚本解析失败（EXE 会把源码当报错打出来）；空 crash 日志触发 `$text.Length` 异常。两处都修了，EXE 恢复可运行。
+- **逃生网页卡飞的真因**：EXE 之前轮询 `http://127.0.0.1:<port>/` 但 `dsh web` 需要 token，返回 401 → EXE 一直轮询到超时，网页其实早起来了。现在改为：
+  - 从 `dsh web` 输出里提取**带 token 的 URL** 再打开；
+  - 加 `--no-open`，避免 `dsh web` 和 EXE 各开一次浏览器；
+  - 轮询期间每 10 秒打印进度，进程提前退出会显示 stderr 尾部；失败自动结束子进程；
+  - PATH 里的 dsh 是旧版（非 0.2.1）时自动改用 `npx @deepseek-ai/dsh@next`。
+- 两个 EXE 都重新编译并冒烟验证：`dsh-doctor.exe scan`、`dsh-doctor-native.exe scan --json` 均正常。
+
 ## v0.13.11 — 2026-10-25
 
 回应「面板一打开就一直正在体检」和「启动弹窗找不到是哪个插件」：

@@ -71,33 +71,80 @@ function Restore-RescueBackup {
 }
 
 function Start-RescueWeb {
-    $command = Get-Command dsh -ErrorAction SilentlyContinue
-    if (-not $command) {
-        Write-DoctorError 'PATH 里没有 dsh 命令，无法启动网页版。'
-        Write-DoctorInfo '可以改用：npx @deepseek-ai/dsh@latest web'
-        return
-    }
+    # 逃生网页必须用与桌面端同一代 harness，否则旧版读不了新会话。
     $port = Get-Random -Minimum 47000 -Maximum 48999
-    $url = 'http://127.0.0.1:' + $port + '/'
-    $source = [string]$command.Source
-    Write-DoctorStep ('启动网页版：' + $source + ' web --port ' + $port)
-    if ($source -match '\.(cmd|bat)$') {
-        Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', ('"' + $source + '"'), 'web', '--port', [string]$port) -WindowStyle Hidden
-    } else {
-        Start-Process -FilePath $source -ArgumentList @('web', '--port', [string]$port) -WindowStyle Hidden
-    }
-    for ($attempt = 0; $attempt -lt 60; $attempt += 1) {
-        Start-Sleep -Milliseconds 500
+    for ($attempt = 0; $attempt -lt 10; $attempt += 1) {
+        $busy = $false
         try {
-            $response = Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 2 -ErrorAction Stop
-            if ($response.StatusCode -lt 500) {
-                Write-DoctorInfo ('网页版已启动：' + $url)
-                Start-Process $url
-                return
-            }
-        } catch { }
+            $client = New-Object System.Net.Sockets.TcpClient
+            $client.Connect('127.0.0.1', $port)
+            $client.Close()
+            $busy = $true
+        } catch { $busy = $false }
+        if (-not $busy) { break }
+        $port = Get-Random -Minimum 47000 -Maximum 48999
     }
-    Write-DoctorWarn '30 秒内没起来。首次运行可能需要下载依赖，稍等再试，或手动执行上面的命令。'
+    $url = 'http://127.0.0.1:' + $port + '/'
+
+    $command = Get-Command dsh -ErrorAction SilentlyContinue
+    $useNpx = $false
+    $version = ''
+    if ($command) {
+        $source = [string]$command.Source
+        try { $version = [string](& $source --version 2>$null | Select-Object -First 1) } catch { $version = '' }
+        if ($version -notmatch '^0\.2\.1') {
+            Write-DoctorWarn ('PATH 里的 dsh 是旧版 ' + $version + '，与桌面端 rc.3 不一致；改用 npx @deepseek-ai/dsh@next 启动。')
+            $useNpx = $true
+        }
+    } else {
+        Write-DoctorInfo 'PATH 里没有 dsh，改用 npx @deepseek-ai/dsh@next（首次可能需要下载，1-2 分钟）。'
+        $useNpx = $true
+    }
+
+    $started = $null
+    $stdoutFile = Join-Path $env:TEMP ('dsh-doctor-web-' + [guid]::NewGuid().ToString('N') + '.log')
+    $stderrFile = Join-Path $env:TEMP ('dsh-doctor-web-' + [guid]::NewGuid().ToString('N') + '.err')
+    if ($useNpx) {
+        Write-DoctorStep ('启动网页版：npx --yes @deepseek-ai/dsh@next web --port ' + $port + ' --no-open')
+        $started = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', 'npx', '--yes', '@deepseek-ai/dsh@next', 'web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    } elseif ($source -match '\.(cmd|bat)$') {
+        Write-DoctorStep ('启动网页版：' + $source + ' web --port ' + $port + ' --no-open')
+        $started = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', ('"' + $source + '"'), 'web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    } else {
+        Write-DoctorStep ('启动网页版：' + $source + ' web --port ' + $port + ' --no-open')
+        $started = Start-Process -FilePath $source -ArgumentList @('web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    }
+
+    Write-DoctorInfo '正在等网页版就绪（最多 2 分钟，期间菜单会显示进度，不会假装卡死）…'
+    $tokenUrl = $null
+    for ($attempt = 1; $attempt -le 120; $attempt += 1) {
+        Start-Sleep -Seconds 1
+        if ($null -eq $tokenUrl -and (Test-Path -LiteralPath $stdoutFile)) {
+            try {
+                $text = [string](Get-Content -LiteralPath $stdoutFile -Raw -Encoding UTF8)
+                $match = [regex]::Match($text, '(http://127\.0\.0\.1:\d+/\?token=[^\s'']+)')
+                if ($match.Success) { $tokenUrl = $match.Groups[1].Value }
+            } catch { }
+        }
+        if ($null -ne $tokenUrl) {
+            Write-DoctorInfo ('网页版已启动：' + $tokenUrl)
+            try { Start-Process $tokenUrl } catch { Write-DoctorInfo '浏览器没打开，请手动访问上面的地址。' }
+            return
+        }
+        if ($attempt % 10 -eq 0) { Write-DoctorInfo ('还在启动… ' + $attempt + ' 秒') }
+        if ($attempt -ge 8 -and $null -ne $started -and $started.HasExited) {
+            $tail = ''
+            try { if (Test-Path -LiteralPath $stderrFile) { $tail = ([string](Get-Content -LiteralPath $stderrFile -Raw -Encoding UTF8)).Trim() } } catch { }
+            Write-DoctorWarn ('逃生进程提前退出（出口代码 ' + $started.ExitCode + '）。' + $(if ($tail) { ' 报错：' + $tail } else { '' }))
+            return
+        }
+    }
+    if ($null -ne $started -and -not $started.HasExited) {
+        try { Stop-Process -Id $started.Id -Force -ErrorAction SilentlyContinue } catch { }
+    }
+    $tail2 = ''
+    try { if (Test-Path -LiteralPath $stderrFile) { $tail2 = ([string](Get-Content -LiteralPath $stderrFile -Raw -Encoding UTF8)).Trim() } } catch { }
+    Write-DoctorWarn ('2 分钟内没拿到带 token 的地址。' + $(if ($tail2) { ' 报错：' + $tail2 } else { ' 首次运行可能需要下载依赖。' }))
 }
 
 function Show-RescueRollbackMenu {

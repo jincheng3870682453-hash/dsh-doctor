@@ -465,13 +465,17 @@ function Test-DoctorPluginBootFailure {
     foreach ($log in $logs) {
         $text = ''
         try { $text = Get-Content -LiteralPath $log.FullName -Raw -Encoding UTF8 } catch { continue }
+        if ($null -eq $text) { continue }
+        $text = [string]$text
         if ($text.Length -gt 65536) { $text = $text.Substring(0, 65536) }
         $bootMatch = [regex]::Match($text, '(?:^|\n)\s*([a-z0-9][\w@/.-]*): import failed')
         if ($bootMatch.Success) {
             $pluginName = $bootMatch.Groups[1].Value
-            [void]$findings.Add((New-Finding -Id 'plugin-boot-failure' -Severity 'Medium' -Path $log.FullName ` 
-                -Title ('Plugin failed to start: ' + $pluginName) ` 
-                -Detail ('The startup log shows ' + $pluginName + ' failed to import, so the host did not boot. Usually a self-update race or a version mismatch. Restart once; if it repeats, disable or update that plugin.')))
+            $bootKey = 'boot|' + $pluginName
+            if ($seen.ContainsKey($bootKey)) { continue }
+            $seen[$bootKey] = $true
+            $detail = 'The startup log shows ' + $pluginName + ' failed to import, so the host did not boot. Usually a self-update race or a version mismatch. Restart once; if it repeats, disable or update that plugin.'
+            [void]$findings.Add((New-Finding -Id 'plugin-boot-failure' -Severity 'Medium' -Path $log.FullName -Title ('Plugin failed to start: ' + $pluginName) -Detail $detail))
             continue
         }
         $errorMatch = [regex]::Match($text, '(ReferenceError|TypeError|SyntaxError|RangeError): ([^\r\n]+)')
