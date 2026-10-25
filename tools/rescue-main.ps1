@@ -110,6 +110,10 @@ function Start-RescueWeb {
     } elseif ($source -match '\.(cmd|bat)$') {
         Write-DoctorStep ('启动网页版：' + $source + ' web --port ' + $port + ' --no-open')
         $started = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', ('"' + $source + '"'), 'web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    } elseif ($source -match '\.ps1$') {
+        # Get-Command 可能解析到 npm 的 dsh.ps1 shim；.ps1 不能当 Win32 程序直接运行。
+        Write-DoctorStep ('启动网页版：powershell -File ' + $source + ' web --port ' + $port + ' --no-open')
+        $started = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $source + '"'), 'web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
     } else {
         Write-DoctorStep ('启动网页版：' + $source + ' web --port ' + $port + ' --no-open')
         $started = Start-Process -FilePath $source -ArgumentList @('web', '--port', [string]$port, '--no-open') -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile

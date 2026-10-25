@@ -10,6 +10,7 @@
   - 加 `--no-open`，避免 `dsh web` 和 EXE 各开一次浏览器；
   - 轮询期间每 10 秒打印进度，进程提前退出会显示 stderr 尾部；失败自动结束子进程；
   - PATH 里的 dsh 是旧版（非 0.2.1）时自动改用 `npx @deepseek-ai/dsh@next`。
+- **逃生兼容 npm 的 .ps1 shim**：Get-Command dsh 可能解析到 dsh.ps1，之前被当成 Win32 程序启动会报 %1 不是有效的 Win32 应用程序；现在用 powershell -File 启动。
 - 两个 EXE 都重新编译并冒烟验证：`dsh-doctor.exe scan`、`dsh-doctor-native.exe scan --json` 均正常。
 
 ## v0.13.11 — 2026-10-25
