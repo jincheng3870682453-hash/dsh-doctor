@@ -23,6 +23,12 @@
 
 ---
 
+## v0.13.13 — 2026-10-25
+
+- **修「逃生进程提前退出」**：之前误用 npm 的 `dsh.ps1` shim；现在优先用同目录 `dsh.cmd`，并打印子进程输出。实测 `dsh.cmd web` 十几秒返回带 token 的 URL 并自动打开浏览器。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.13)
+
 ## v0.13.12 — 2026-10-25
 
 - **修「起网页版（逃生）卡飞」**：之前 EXE 用不带 token 的地址轮询，`dsh web` 回 401，EXE 白等 30 秒然后报失败——网页其实早起来了。现在从输出里取带 token 的 URL 再打开，加 `--no-open` 防双开浏览器，轮询有进度、失败会显示报错。
