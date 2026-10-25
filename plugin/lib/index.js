@@ -401,6 +401,21 @@ function checkPluginBootFailure() {
 	for (const name of files) {
 		let text = ''
 		try { text = readFileSync(join(logDir, name), 'utf8').slice(0, 65536) } catch (error) { continue }
+		// 第一种：启动器直接写「<插件>: import failed」，没有文件路径。
+		const bootMatch = /(?:^|\n)\s*([a-z0-9][\w@/.-]*): import failed/i.exec(text)
+		if (bootMatch !== null) {
+			const pluginName = bootMatch[1]
+			if (!seen.has('boot|' + pluginName)) {
+				seen.add('boot|' + pluginName)
+				findings.push(finding('plugin-boot-failure', 'medium',
+					'插件启动失败：' + pluginName,
+					'崩溃日志显示 `' + pluginName + '` 在启动阶段 import 失败，宿主因此没起来。'
+						+ '常见原因：插件刚自更新/自重载（文件正被替换）、或与当前 DSH 版本不兼容。'
+						+ '先重启一次；如果反复出现，就禁用/更新这个插件。崩溃日志：' + name,
+					join(logDir, name), null))
+			}
+			continue
+		}
 		if (!text.includes('file:///')) continue
 		const error = /(ReferenceError|TypeError|SyntaxError|RangeError): ([^\r\n]+)/.exec(text)
 		if (error === null) continue
@@ -947,6 +962,24 @@ let scanRequestId = 0
 const scanWaiters = new Map()
 let scanCache = { at: 0, findings: null }
 
+/** 上次体检结果落盘：面板打开时直接读它，不再一进来就全量扫描。 */
+function lastScanFile() {
+	return join(dshHome(), 'dsh-doctor', 'last-scan.json')
+}
+
+function readLastScan() {
+	const data = readJson(lastScanFile())
+	if (data === null || !Array.isArray(data.findings)) return null
+	return { at: typeof data.at === 'number' ? data.at : 0, findings: data.findings }
+}
+
+function saveLastScan(findings) {
+	try {
+		mkdirSync(join(dshHome(), 'dsh-doctor'), { recursive: true })
+		writeFileSync(lastScanFile(), JSON.stringify({ at: Date.now(), findings }))
+	} catch (error) { /* 落盘失败不影响体检 */ }
+}
+
 function ensureScanWorker() {
 	if (scanWorker !== null) return scanWorker
 	try {
@@ -999,11 +1032,22 @@ async function scanCached() {
 	try {
 		const findings = await scanInWorker()
 		scanCache = { at: Date.now(), findings }
+		saveLastScan(findings)
 		return findings
 	} catch (error) {
+		const message = String(error && error.message ? error.message : error)
+		// 超时/崩溃：先终止卡住的 worker，再如实报错；不要退回同步扫描把宿主也拖死。
+		if (scanWorker !== null) {
+			try { scanWorker.terminate() } catch (terminateError) { /* ignore */ }
+			scanWorker = null
+		}
+		if (/timeout/i.test(message)) {
+			throw new Error('体检超时（后台扫描超过 30 秒），请重试；如果反复超时，先把体检交给独立 EXE：dsh-doctor.exe scan')
+		}
 		// worker 起不来（老运行时 / 权限）就退回同步扫描，功能不能因此消失。
 		const findings = scan()
 		scanCache = { at: Date.now(), findings }
+		saveLastScan(findings)
 		return findings
 	}
 }
@@ -2448,7 +2492,22 @@ async function handle(req, res) {
 	const url = new URL(req.url, 'http://127.0.0.1')
 	const path = url.pathname
 	try {
-		if (path === PREFIX + '/status' && req.method === 'GET') {
+		if (path === PREFIX + '/cached' && req.method === 'GET') {
+		// 只读上次落盘结果，不触发扫描：面板打开秒开。
+		const cached = readLastScan()
+		if (cached === null) {
+			send(res, 200, { ok: true, scannedAt: null, findings: [] })
+			return
+		}
+		const findings = cached.findings
+		const summary = {
+			high: findings.filter(item => item.severity === 'high').length,
+			medium: findings.filter(item => item.severity === 'medium').length,
+		}
+		send(res, 200, { ok: true, scannedAt: cached.at, findings, summary })
+		return
+	}
+	if (path === PREFIX + '/status' && req.method === 'GET') {
 			const findings = await scanCached()
 			const summary = {
 				high: findings.filter(item => item.severity === 'high').length,

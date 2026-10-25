@@ -122,6 +122,12 @@ window.__ModuleLoader__.load({
 			return response.json()
 		}
 
+		async function fetchCached() {
+			const response = await fetch('/dsh-doctor/cached', { headers: { accept: 'application/json' } })
+			if (!response.ok) throw new Error('HTTP ' + response.status)
+			return response.json()
+		}
+
 		async function fetchHistory() {
 			const response = await fetch('/dsh-doctor/history', { headers: { accept: 'application/json' } })
 			if (!response.ok) throw new Error('HTTP ' + response.status)
@@ -277,6 +283,7 @@ window.__ModuleLoader__.load({
 		function Panel() {
 			ensureStyle()
 			const [status, setStatus] = React.useState(null)
+			const [scannedAt, setScannedAt] = React.useState(null)
 			const [history, setHistory] = React.useState([])
 			const [loading, setLoading] = React.useState(false)
 			const [rescuing, setRescuing] = React.useState(false)
@@ -303,6 +310,7 @@ window.__ModuleLoader__.load({
 				setLoading(true)
 				fetchStatus().then((data) => {
 					setStatus(data)
+					setScannedAt(Date.now())
 					setError(null)
 					const list = Array.isArray(data.findings) ? data.findings : []
 					const high = list.filter(item => item.severity === 'high').length
@@ -321,7 +329,21 @@ window.__ModuleLoader__.load({
 				}, () => { /* 历史读不到不影响体检 */ })
 			}, [])
 
-			React.useEffect(() => { refresh() }, [refresh])
+			// 打开面板只读「上次体检」的落盘结果，不主动扫描；点「体检」才真正跑检查。
+			const loadCached = React.useCallback(() => {
+				fetchHistory().then((data) => {
+					setHistory(Array.isArray(data.entries) ? data.entries : [])
+				}, () => { /* 历史读不到不影响展示 */ })
+				fetchCached().then((data) => {
+					const list = Array.isArray(data.findings) ? data.findings : []
+					if (list.length > 0 || typeof data.scannedAt === 'number') {
+						setStatus({ findings: list })
+						setScannedAt(typeof data.scannedAt === 'number' ? data.scannedAt : null)
+					}
+				}, () => { /* 缓存读不到就显示"尚未体检" */ })
+			}, [])
+
+			React.useEffect(() => { loadCached() }, [loadCached])
 
 			const onCheckUpdate = () => {
 				setUpdateBusy(true)
@@ -462,8 +484,13 @@ window.__ModuleLoader__.load({
 							h('div', { className: 'dshdr-title' }, 'DSH 私人医生'),
 							h('div', { className: 'dshdr-slogan' }, '点一下修复。'),
 						),
+						h('div', { className: 'dshdr-actions' },
+							h('button', { type: 'button', className: 'dshdr-btn', onClick: refresh, disabled: loading }, loading ? '体检中…' : '体检'),
+						),
 					),
-					h('div', { className: 'dshdr-empty' }, '正在体检…'),
+					h('div', { className: 'dshdr-empty' }, loading
+						? '正在体检…（后台扫描，通常几秒；超时会提示重试）'
+						: '还没有体检记录。点右上角「体检」开始。'),
 				)
 			}
 
@@ -523,7 +550,11 @@ window.__ModuleLoader__.load({
 					),
 				),
 
-				h('div', { className: 'dshdr-summary' }, stats),
+				h('div', { className: 'dshdr-summary' }, stats,
+					scannedAt !== null
+						? h('span', { key: 'stat-scan', className: 'dshdr-stat' }, '上次体检：' + new Date(scannedAt).toLocaleString())
+						: null,
+				),
 
 				toast !== null
 					? h('div', { className: 'dshdr-toast' + (toast.ok === true ? '' : ' dshdr-toast-bad') }, String(toast.text))
