@@ -1341,12 +1341,101 @@ function fixWorkspaceAclUnlocked() {
 	}
 }
 
+/** 在 sessions/<workspace>/<sessionId>/ 里找该会话的日志文件。 */
+function findSessionFile(sessionId) {
+	const root = join(dshHome(), 'sessions')
+	let workspaces = []
+	try { workspaces = readdirSync(root) } catch (error) { return null }
+	for (const workspace of workspaces) {
+		const dir = join(root, workspace, sessionId)
+		for (const name of ['session.v4.jsonl.zstd', 'session.jsonl.zstd', 'session.v3.jsonl.zstd']) {
+			const file = join(dir, name)
+			if (existsSync(file)) return file
+		}
+	}
+	return null
+}
+
+/**
+ * 一键把 danger-full-access 的旧会话改回 workspace-write + ask：
+ * 往会话日志末尾追加三条合法事件（permission/preset、sandbox/mode、approval/policy），
+ * 回放时最后一条生效；同时更新投影缓存并备份原文件。跳过当前正在用的会话。
+ */
+function fixPermissionTooBroad() {
+	const cacheFile = join(dshHome(), 'storages', 'session_projcache.json')
+	const cache = readJson(cacheFile)
+	if (cache === null || typeof cache !== 'object') return { ok: false, message: '找不到会话权限投影缓存（' + cacheFile + '），无法修改。' }
+	const tables = cache.tables !== undefined && cache.tables !== null ? cache.tables : null
+	const sessions = tables !== null && tables.sessions !== undefined && tables.sessions !== null ? tables.sessions : null
+	if (sessions === null) return { ok: false, message: '投影缓存里没有 sessions 表，无法修改。' }
+
+	const targets = []
+	for (const [sessionId, row] of Object.entries(sessions)) {
+		const value = row !== null && row !== undefined && row.rows !== undefined && row.rows !== null
+			&& row.rows.permissions !== undefined && row.rows.permissions !== null
+			&& row.rows.permissions.val !== undefined && row.rows.permissions.val !== null
+			? row.rows.permissions.val
+			: null
+		if (value === null) continue
+		if (value.sandbox !== 'danger-full-access' && value.preset !== 'danger-full-access') continue
+		targets.push({ sessionId, row, value })
+	}
+	if (targets.length === 0) return { ok: true, message: '没有 danger-full-access 的会话，不需要修。' }
+
+	const backupDir = join(dshHome(), 'dsh-doctor-backups', 'session-perm-' + Date.now())
+	try { mkdirSync(backupDir, { recursive: true }) } catch (error) { return { ok: false, message: '创建备份目录失败：' + String(error && error.message ? error.message : error) } }
+	try { copyFileSync(cacheFile, join(backupDir, 'session_projcache.json')) } catch (error) { return { ok: false, message: '备份投影缓存失败：' + String(error && error.message ? error.message : error) } }
+
+	const currentSession = typeof process.env.DSH_SESSION_ID === 'string' ? process.env.DSH_SESSION_ID : ''
+	const fixed = []
+	const skipped = []
+	for (const target of targets) {
+		if (target.sessionId === currentSession) { skipped.push(target.sessionId + '（当前会话）'); continue }
+		const file = findSessionFile(target.sessionId)
+		if (file === null) { skipped.push(target.sessionId + '（找不到会话日志）'); continue }
+		try {
+			const text = decodeZstdFile(file)
+			if (text === null) throw new Error('zstd 解压失败')
+			const lines = text.split('\n').filter(line => line.trim().length > 0)
+			let maxSeq = -1
+			let lastPreset = null
+			for (const line of lines) {
+				try {
+					const event = JSON.parse(line)
+					if (typeof event.seq === 'number' && event.seq > maxSeq) maxSeq = event.seq
+					if (event.type === 'permission/preset' && event.data !== undefined && event.data !== null) lastPreset = event.data.preset
+				} catch (error) { /* 跳过坏行 */ }
+			}
+			if (lastPreset === 'workspace-write') { skipped.push(target.sessionId + '（已经是安全权限）'); continue }
+			copyFileSync(file, join(backupDir, target.sessionId + '.zstd'))
+			const now = Date.now()
+			const appended = [
+				{ type: 'permission/preset', seq: maxSeq + 1, time: now, data: { preset: 'workspace-write' } },
+				{ type: 'sandbox/mode', seq: maxSeq + 2, time: now, data: { mode: 'workspace-write' } },
+				{ type: 'approval/policy', seq: maxSeq + 3, time: now, data: { policy: 'ask' } },
+			].map(event => JSON.stringify(event)).join('\n') + '\n'
+			appendFileSync(file, zlib.zstdCompressSync(Buffer.from(appended, 'utf8')))
+			target.row.rows.permissions.val = { preset: 'workspace-write', sandbox: 'workspace-write', approval: 'ask' }
+			fixed.push(target.sessionId)
+		} catch (error) {
+			skipped.push(target.sessionId + '（' + String(error && error.message ? error.message : error) + '）')
+		}
+	}
+	try { writeFileSync(cacheFile, JSON.stringify(cache)) } catch (error) { return { ok: false, message: '会话日志已改，但更新投影缓存失败：' + String(error && error.message ? error.message : error) + '。备份在 ' + backupDir } }
+	const parts = ['已把 ' + fixed.length + ' 个会话改成 workspace-write + ask']
+	if (skipped.length > 0) parts.push('跳过 ' + skipped.length + ' 个：' + skipped.slice(0, 5).join('；') + (skipped.length > 5 ? ' 等' : ''))
+	parts.push('会话日志与投影缓存已备份到 ' + backupDir)
+	parts.push('重开/重启这些会话后生效；当前会话请用 /permission 自己切换')
+	return { ok: fixed.length > 0, message: parts.join('。') }
+}
+
 const FIXES = {
 	'desktop-label': fixDesktopLabel,
 	'workspace-entry': fixWorkspaceEntries,
 	'profile-host-dup': fixProfileHostDup,
 	'restore-patch-layer': fixRestorePatchLayer,
 	'workspace-acl': fixWorkspaceAcl,
+	'permission-too-broad': fixPermissionTooBroad,
 	'reap-zombies': fixReapZombies,
 	'refresh-shell': () => {
 		const ok = refreshShellIcons()
@@ -1988,8 +2077,9 @@ function checkPermissionTooBroad() {
 			+ '——等于把整台机器交给模型，误删文件**不经过回收站、不可撤销**。'
 			+ '涉及会话：' + sample + (broad.length > 5 ? ' 等' : '') + '。'
 			+ '建议：会话里用 `/permission` 切到 `workspace-write` + `ask`；新会话在设置里改默认权限。'
+			+ '点「一键修复」会自动把旧会话（跳过当前会话）改回 `workspace-write` + `ask`，原文件先备份。'
 			+ '已经被删的文件，恢复路径见 docs/recovery.md。',
-		cacheFile, null))
+		cacheFile, 'permission-too-broad'))
 	return findings
 }
 
@@ -2075,11 +2165,38 @@ function startAutoGuard(ctx) {
 			if (result.ok === true && low) refreshShellIcons()
 		} catch (error) { /* 守护自己不许抛 */ }
 	}
+	// 官方插件每次安装/升级都可能把 schemastery 等宿主包副本带回来；后台顺手隔离，
+	// 避免下一次启动直接崩在 reading 'prepare'。同样有频率上限，不和用户抢写。
+	let dupWindowStart = 0
+	let dupFixCount = 0
+	const dupTick = () => {
+		try {
+			if (!autoFixEnabled()) return
+			if (checkProfileHostDuplicates().length === 0) return
+			const now = Date.now()
+			if (now - dupWindowStart > 3600000) { dupWindowStart = now; dupFixCount = 0 }
+			if (dupFixCount >= 3) return
+			dupFixCount += 1
+			const result = fixProfileHostDup()
+			appendHistory({
+				at: new Date().toISOString(),
+				id: 'auto-profile-host-dup',
+				ok: result.ok === true,
+				changed: true,
+				message: '自动巡检：' + String(result.message || ''),
+				backup: null,
+			})
+		} catch (error) { /* 守护自己不许抛 */ }
+	}
 	try {
 		ctx.effect(() => {
 			const timer = setInterval(tick, 30000)
 			return () => clearInterval(timer)
 		}, 'dsh-doctor: auto guard')
+		ctx.effect(() => {
+			const timer = setInterval(dupTick, 30000)
+			return () => clearInterval(timer)
+		}, 'dsh-doctor: auto guard host duplicates')
 	} catch (error) { /* 老版本 ctx 没有 effect 时静默降级 */ }
 }
 
@@ -2508,6 +2625,8 @@ async function handle(req, res) {
 		return
 	}
 	if (path === PREFIX + '/status' && req.method === 'GET') {
+			// 修复之后面板要看到新结果，不能被 8 秒缓存挡住。
+			if (url.searchParams.get('force') === '1') scanCache = { at: 0, findings: null }
 			const findings = await scanCached()
 			const summary = {
 				high: findings.filter(item => item.severity === 'high').length,

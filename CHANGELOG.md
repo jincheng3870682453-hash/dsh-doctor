@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.13.14 — 2026-10-25
+
+- **27 个 danger-full-access 会话现在能一键修**：`permission-too-broad` 带 `fixId`。修复会往每个旧会话日志末尾追加合法的 `permission/preset` + `sandbox/mode` + `approval/policy` 事件（回放时最后生效），同步更新投影缓存；原会话文件与缓存先备份，**跳过当前正在用的会话**（它需要 `/permission` 自己切）。实测合成会话：追加 seq 连续、缓存同步、备份齐全。
+- **修「修复完成但按钮还在」**：修复成功后面板先本地摘掉该卡片，再带 `?force=1` 强制重新扫描（绕过 8 秒缓存），按钮不再残留。
+- **后台自动隔离宿主包副本**：auto-guard 每 30 秒顺带检查 profile，发现 schemastery 等副本自动隔离（每小时上限 3 次），防止插件安装/升级后下次启动崩在 `reading 'prepare'`。
+- **贡献者徽章**：新增 `assets/contributor-badge.svg`，README 顶部加 Contributors 徽章；[CONTRIBUTORS.md](CONTRIBUTORS.md) 提供可直接复制的 Markdown。
+
 ## v0.13.13 — 2026-10-25
 
 - **逃生最终修复**：PowerShell 常把 npm 的 `dsh` 解析成 `dsh.ps1` shim，跨进程启动会瞬间退出（菜单显示"逃生进程提前退出（出口代码 ）"）。现在发现 `.ps1` 时自动改用同目录的 **`dsh.cmd`**，仍保留 `powershell -File` 兜底。

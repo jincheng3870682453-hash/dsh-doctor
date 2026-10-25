@@ -23,6 +23,15 @@
 
 ---
 
+## v0.13.14 — 2026-10-25
+
+- **权限过宽的旧会话可一键修**：`danger-full-access` 会话现在有「一键修复」，会把它们改回 `workspace-write + ask`（先备份、跳过当前会话；当前会话用 `/permission` 自己切）。
+- **修复按钮不再残留**：修复完成后卡片立即消失并强制重新体检，不会出现"提示修复完成但按钮还在"。
+- **后台自动兜底**：每 30 秒顺带隔离 profile 里的宿主包副本，插件安装/升级后再也不会把 DSH 下次启动搞崩。
+- **贡献者徽章**：README 顶部新增 Contributors 徽章，[CONTRIBUTORS.md](CONTRIBUTORS.md) 提供可复制的徽章 Markdown。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.13.14)
+
 ## v0.13.13 — 2026-10-25
 
 - **修「逃生进程提前退出」**：之前误用 npm 的 `dsh.ps1` shim；现在优先用同目录 `dsh.cmd`，并打印子进程输出。实测 `dsh.cmd web` 十几秒返回带 token 的 URL 并自动打开浏览器。

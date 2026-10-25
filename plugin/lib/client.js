@@ -116,8 +116,8 @@ window.__ModuleLoader__.load({
 			return '信息'
 		}
 
-		async function fetchStatus() {
-			const response = await fetch('/dsh-doctor/status', { headers: { accept: 'application/json' } })
+		async function fetchStatus(force) {
+			const response = await fetch('/dsh-doctor/status' + (force === true ? '?force=1' : ''), { headers: { accept: 'application/json' } })
 			if (!response.ok) throw new Error('HTTP ' + response.status)
 			return response.json()
 		}
@@ -305,10 +305,10 @@ window.__ModuleLoader__.load({
 				return () => clearTimeout(timer)
 			}, [toast])
 
-			const refresh = React.useCallback(() => {
+			const refresh = React.useCallback((force) => {
 				setRescueArmed(false)
 				setLoading(true)
-				fetchStatus().then((data) => {
+				fetchStatus(force === true).then((data) => {
 					setStatus(data)
 					setScannedAt(Date.now())
 					setError(null)
@@ -458,6 +458,13 @@ window.__ModuleLoader__.load({
 					const text = String(result !== null && result.message ? result.message : '完成')
 					setToast({ ok, text })
 					systemNotify(ok ? '修复完成 · DSH 私人医生' : '修复失败 · DSH 私人医生', text)
+					if (ok) {
+						// 修复成功先本地摘掉这张卡，避免"修复完成但按钮还在"。
+						setStatus((previous) => previous === null ? previous : {
+							...previous,
+							findings: (Array.isArray(previous.findings) ? previous.findings : []).filter(item => item.fixId !== fixId),
+						})
+					}
 				}, (reason) => {
 					const text = '修复请求失败：' + String(reason && reason.message ? reason.message : reason)
 					setToast({ ok: false, text })
@@ -465,7 +472,7 @@ window.__ModuleLoader__.load({
 				}).then(() => {
 					setPending(null)
 					notifyStatusChanged()
-					refresh()
+					refresh(true)
 				})
 			}
 

@@ -26,6 +26,18 @@
   - `docs/traps.md` 加 #19（MCP 加载失败 / 作用域 bug 示例）；
   - 记录"端口漂移"类问题：外部桥接要自己轮询 `baseUrl`，医生不自动改外部配置。
 
+## 贡献者徽章
+
+被采纳的贡献者可以把这个徽章放到自己的主页 / 仓库 / 文章里：
+
+[![DSH 私人医生 · 贡献者](https://raw.githubusercontent.com/jincheng3870682453-hash/dsh-doctor/main/assets/contributor-badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/CONTRIBUTORS.md)
+
+Markdown 复制：
+
+```markdown
+[![DSH 私人医生 · 贡献者](https://raw.githubusercontent.com/jincheng3870682453-hash/dsh-doctor/main/assets/contributor-badge.svg)](https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/CONTRIBUTORS.md)
+```
+
 ## 怎么上榜
 
 不用写代码也能上：
