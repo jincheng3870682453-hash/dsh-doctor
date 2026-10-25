@@ -91,6 +91,12 @@ function Start-RescueWeb {
     $version = ''
     if ($command) {
         $source = [string]$command.Source
+        # npm 在 Windows 会同时生成 dsh / dsh.cmd / dsh.ps1；PS 常解析到 .ps1，
+        # 但 .ps1 既不能当 Win32 程序启动，跨进程跑也容易出幺蛾子——优先用 .cmd。
+        if ($source -match '\.ps1$') {
+            $cmdShim = [System.IO.Path]::ChangeExtension($source, '.cmd')
+            if (Test-Path -LiteralPath $cmdShim) { $source = $cmdShim }
+        }
         try { $version = [string](& $source --version 2>$null | Select-Object -First 1) } catch { $version = '' }
         if ($version -notmatch '^0\.2\.1') {
             Write-DoctorWarn ('PATH 里的 dsh 是旧版 ' + $version + '，与桌面端 rc.3 不一致；改用 npx @deepseek-ai/dsh@next 启动。')
@@ -137,9 +143,14 @@ function Start-RescueWeb {
         }
         if ($attempt % 10 -eq 0) { Write-DoctorInfo ('还在启动… ' + $attempt + ' 秒') }
         if ($attempt -ge 8 -and $null -ne $started -and $started.HasExited) {
+            try { $started.Refresh() } catch { }
             $tail = ''
+            $outTail = ''
             try { if (Test-Path -LiteralPath $stderrFile) { $tail = ([string](Get-Content -LiteralPath $stderrFile -Raw -Encoding UTF8)).Trim() } } catch { }
-            Write-DoctorWarn ('逃生进程提前退出（出口代码 ' + $started.ExitCode + '）。' + $(if ($tail) { ' 报错：' + $tail } else { '' }))
+            try { if (Test-Path -LiteralPath $stdoutFile) { $outTail = ([string](Get-Content -LiteralPath $stdoutFile -Raw -Encoding UTF8)).Trim() } } catch { }
+            $codeText = ''
+            try { if ($null -ne $started.ExitCode) { $codeText = ' 出口代码 ' + [string]$started.ExitCode } } catch { }
+            Write-DoctorWarn ('逃生进程提前退出。' + $codeText + $(if ($tail) { ' 报错：' + $tail } elseif ($outTail) { ' 输出：' + $outTail } else { '' }))
             return
         }
     }
