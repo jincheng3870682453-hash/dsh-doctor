@@ -156,6 +156,27 @@ function Get-PathAclInfo {
     if (-not (Test-Path -LiteralPath $Path)) { return $result }
     $result.Exists = $true
     try {
+        # 引擎优先：PowerShell 的 Get-Acl 拿不到 SACL（Low 完整性标签），
+        # 只有 doctor-sys 的 acl-read 能读回来；EXE 启动器会把引擎解压出来并设 DSH_DOCTOR_SYS。
+        $engine = $env:DSH_DOCTOR_SYS
+        if (-not [string]::IsNullOrWhiteSpace($engine) -and (Test-Path -LiteralPath $engine)) {
+            try {
+                $raw = (& $engine acl-read --path $Path 2>$null | Out-String)
+                $parsed = $raw | ConvertFrom-Json
+                if ($parsed.ok -eq $true -and $null -ne $parsed.data -and -not [string]::IsNullOrWhiteSpace([string]$parsed.data.sddl)) {
+                    $sddl = [string]$parsed.data.sddl
+                    $result.Sddl = $sddl
+                    $result.LowLabel = ($sddl -match ';;;LW\)') -or ([string]$parsed.data.integrity -eq 'low')
+                    $result.EveryoneDeny = [bool]($sddl -match '\(D;[^)]*;;;WD\)')
+                    $result.CapabilityAces = @(
+                        [regex]::Matches($sddl, 'S-1-4-[\d-]+') |
+                            ForEach-Object { $_.Value } |
+                            Sort-Object -Unique
+                    )
+                    return $result
+                }
+            } catch { /* 引擎失败就退回 Get-Acl */ }
+        }
         $acl = Get-Acl -LiteralPath $Path
         $sddl = [string]$acl.Sddl
         $result.Sddl = $sddl

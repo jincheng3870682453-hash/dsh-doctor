@@ -67,11 +67,16 @@ jobs:
   windows:
     name: build · Windows EXE
     runs-on: windows-latest
+    needs: doctorsys
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch the Rust engine artifact (embedded into the EXE)
+        uses: actions/download-artifact@v4
+        with:
+          name: dsh-doctor-sys
+          path: doctor-sys/target/release
       - name: Build dsh-doctor.exe
         shell: pwsh
-        # Rust 引擎由 doctorsys job 单独构建（避免两处 cargo 版本/产物不一致）。
         run: ./tools/build.ps1 -SkipDoctorSys
       - name: Run the built EXE
         shell: pwsh

@@ -15,3 +15,5 @@ dist/release/
 # Rust build output
 doctor-sys/target/
 
+# engine binary staged into the npm package by build.ps1
+plugin/bin/

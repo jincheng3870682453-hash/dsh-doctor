@@ -7,11 +7,18 @@ param(
     [int]$Seconds = 120,
     [switch]$Json,
     [switch]$Yes,
-    [switch]$RestartExplorer
+    [switch]$RestartExplorer,
+    [string]$EnginePath = ''
 )
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
+
+# EXE 启动器会把内嵌的 doctor-sys 解压出来并通过 -EnginePath 传进来：
+# PowerShell 的 Get-Acl 读不到 SACL（Low 完整性标签），必须靠引擎读。
+if (-not [string]::IsNullOrWhiteSpace($EnginePath) -and (Test-Path -LiteralPath $EnginePath)) {
+    $env:DSH_DOCTOR_SYS = $EnginePath
+}
 
 $libRoot = Join-Path $PSScriptRoot 'lib'
 foreach ($lib in @('common.ps1', 'checks.ps1', 'fixes.ps1', 'report.ps1')) {

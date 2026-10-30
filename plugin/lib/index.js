@@ -17,6 +17,7 @@ import { createServer } from 'node:net'
 import * as zlib from 'node:zlib'
 
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
 const requireFromHere = createRequire(import.meta.url)
@@ -85,6 +86,9 @@ const isWindows = process.platform === 'win32'
 function doctorSysPath() {
 	const configured = process.env.DSH_DOCTOR_SYS
 	if (typeof configured === 'string' && configured.length > 0 && existsSync(configured)) return configured
+	// 插件包自带引擎：没有它 PowerShell 读不到 SACL（Low 标签），白图标会漏报。
+	const bundled = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'doctor-sys.exe')
+	if (existsSync(bundled)) return bundled
 	return null
 }
 
@@ -1883,7 +1887,10 @@ async function rescueWebUnlocked() {
 /* ── 自动巡检 / 刷新外壳 / 僵尸进程回收 ─────────────────────────────── */
 
 function autoFixEnabled() {
-	return String(process.env.DSH_DOCTOR_AUTOFIX || '1').toLowerCase() !== '0'
+	if (String(process.env.DSH_DOCTOR_AUTOFIX || '1').toLowerCase() === '0') return false
+	// 手动测试/演示时暂停自动修复：touch 这个文件即可，不用改环境变量或重启。
+	if (existsSync(join(dshHome(), 'dsh-doctor', 'autofix.pause'))) return false
+	return true
 }
 
 /** 让 Explorer 重新取图标（SHChangeNotify），不用重启资源管理器、不闪。 */

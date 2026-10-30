@@ -23,6 +23,11 @@ if ($SkipDoctorSys) {
     # 纯 Rust 原生 CLI（scan/fix）：同一份二进制，换个名字给"不想要 PowerShell"的用户。
     Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'dsh-doctor-native.exe') -Force
     Write-Host ('built ' + (Join-Path $release 'dsh-doctor-native.exe') + ' (' + [math]::Round((Get-Item (Join-Path $release 'dsh-doctor-native.exe')).Length / 1KB, 1) + ' KB)')
+    # 插件侧也要能读 SACL（Low 完整性标签）：PowerShell 的 Get-Acl 读不到，必须用引擎。
+    $pluginBin = Join-Path $root 'plugin\bin'
+    New-Item -ItemType Directory -Path $pluginBin -Force | Out-Null
+    Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $pluginBin 'doctor-sys.exe') -Force
+    Write-Host ('staged plugin engine: ' + (Join-Path $pluginBin 'doctor-sys.exe'))
 } else {
     Write-Host 'cargo not found - skip doctor-sys.exe (CI builds it separately)'
 }
@@ -58,9 +63,12 @@ using System.Text;
 class DshDoctorLauncher
 {
     const string ScriptBase64 = "__SCRIPT_B64__";
+    const string SysBase64 = "__SYS_B64__";
 
     static int Main(string[] args)
     {
+        string temp = null;
+        string sysTemp = null;
         try
         {
             string script = Encoding.UTF8.GetString(Convert.FromBase64String(ScriptBase64));
@@ -70,7 +78,6 @@ class DshDoctorLauncher
                 AppDomain.CurrentDomain.BaseDirectory,
                 Directory.GetCurrentDirectory()
             };
-            string temp = null;
             foreach (string directory in candidates)
             {
                 try
@@ -91,13 +98,22 @@ class DshDoctorLauncher
             var info = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + temp + "\"",
                 UseShellExecute = false
             };
+            if (!string.IsNullOrEmpty(SysBase64))
+            {
+                try
+                {
+                    sysTemp = Path.Combine(Path.GetTempPath(), "dsh-doctor-sys-" + Guid.NewGuid().ToString("N") + ".exe");
+                    File.WriteAllBytes(sysTemp, Convert.FromBase64String(SysBase64));
+                }
+                catch (Exception) { sysTemp = null; }
+            }
+            info.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + temp + "\""
+                + (sysTemp != null ? " -EnginePath \"" + sysTemp + "\"" : "");
             if (args.Length > 0) info.EnvironmentVariables["DSH_DOCTOR_EXE_ARGS"] = args[0];
             var process = Process.Start(info);
             process.WaitForExit();
-            try { File.Delete(temp); } catch (Exception) { }
             return process.ExitCode;
         }
         catch (Exception error)
@@ -105,10 +121,18 @@ class DshDoctorLauncher
             Console.Error.WriteLine("dsh-doctor launcher failed: " + error.GetType().Name + " - " + error.Message);
             return 2;
         }
+        finally
+        {
+            try { if (temp != null) File.Delete(temp); } catch (Exception) { }
+            try { if (sysTemp != null) File.Delete(sysTemp); } catch (Exception) { }
+        }
     }
 }
 '@
-$source = $launcher.Replace('__SCRIPT_B64__', $encoded)
+$engineSource = Join-Path $root 'doctor-sys\target\release\doctor-sys.exe'
+$sysB64 = ''
+if (Test-Path -LiteralPath $engineSource) { $sysB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($engineSource)) }
+$source = $launcher.Replace('__SCRIPT_B64__', $encoded).Replace('__SYS_B64__', $sysB64)
 $csFile = Join-Path $release 'dsh-doctor-launcher.cs'
 $exeFile = Join-Path $release 'dsh-doctor.exe'
 Set-Content -LiteralPath $csFile -Value $source -Encoding UTF8
