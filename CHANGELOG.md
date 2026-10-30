@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.2 — 2026-10-30
+
+- **插件内置 `doctor-sys` 引擎**（`plugin/bin/doctor-sys.exe`，随 npm 包发布）：PowerShell 的 `Get-Acl` 读不到 SACL，之前白图标（Low 完整性标签）在插件侧会**漏报**；现在引擎优先读取，实测能找到 `desktop-low-label`（高危）并一键修复。
+- **自动守护加暂停开关**：`~/.dsh/dsh-doctor/autofix.pause` 存在时，后台巡检不再自动改 ACL / 隔离副本，方便手动打碎-修复测试；删掉文件即恢复。
+- **EXE 内嵌引擎**：构建时把 `doctor-sys.exe` 一起打进 `dsh-doctor.exe`，启动时解压并通过 `-EnginePath` 传给 PowerShell（PS 侧 `Get-PathAclInfo` 引擎优先，失败回退 `Get-Acl`）。
+- 发现并记录：自动守护会把"故意打碎的 Everyone 拒绝项"在 30 秒内自动修掉——这正是手动测试时状态"自己变回去"的原因。
+
 ## v0.14.1 — 2026-10-25
 
 修「网页版明明打开了，医生却提示逃生失败 / 页面报 Failed to fetch」：

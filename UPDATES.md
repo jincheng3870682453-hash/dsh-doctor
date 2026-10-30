@@ -23,6 +23,13 @@
 
 ---
 
+## v0.14.2 — 2026-10-30
+
+- **白图标不再漏报**：插件包里带上 Rust 引擎，Low 完整性标签能被正确读到并一键修复。
+- **手动测试不再被守护抢修**：`~/.dsh/dsh-doctor/autofix.pause` 存在时后台巡检暂停；删掉即恢复。
+
+[下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.14.2)
+
 ## v0.14.1 — 2026-10-25
 
 - **修「网页版打开了但医生提示逃生失败」**：`dsh.cmd` shim 吞掉了带 token 的输出，医生抓不到 token 就以为没起来。现在直接用 `node` 启动 `bin.js`，抓 token 再打开浏览器，页面不会再报 `Failed to fetch`。
