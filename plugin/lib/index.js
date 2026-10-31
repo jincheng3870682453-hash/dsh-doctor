@@ -52,6 +52,10 @@ function desktopPath() {
 	return join(homedir(), 'Desktop')
 }
 
+function appDataDir() {
+	return process.env.APPDATA || join(homedir(), 'AppData', 'Roaming')
+}
+
 function normalizePath(value) {
 	return String(value).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
@@ -521,8 +525,94 @@ function checkCredentials() {
 	return findings
 }
 
-function patchBackupNames(profileDir) {
+/**
+ * 读 .credentials.yaml 的 records 映射（key → 原始块）。
+ * 每启动/登录如果往同一份文件里追加一条登录 grant，records 会持续增长；
+ * 重复 key 还会让严格 YAML 解析失败，表现为 DSH 永久打不开。
+ */
+function readCredentialRecords() {
+	const file = join(dshHome(), '.credentials.yaml')
+	if (!existsSync(file)) return null
+	let text = ''
+	try { text = readFileSync(file, 'utf8') } catch (error) { return null }
+	const lines = text.split(/\r?\n/)
+	const start = lines.findIndex(line => /^records:\s*$/.test(line))
+	if (start < 0) return { file, text, lines, start: -1, records: [] }
+	const records = []
+	let current = null
+	for (let index = start + 1; index < lines.length; index += 1) {
+		const line = lines[index]
+		if (/^\S/.test(line)) break
+		const match = /^  (\S[^:]*):\s*$/.exec(line)
+		if (match !== null) {
+			if (current !== null) records.push(current)
+			current = { key: match[1], block: [line] }
+		} else if (current !== null) {
+			current.block.push(line)
+		}
+	}
+	if (current !== null) records.push(current)
+	return { file, text, lines, start, records }
+}
+
+/** 登录 grant 累积 / records 重复 key：DSH 可能启动即失败，先备份再压缩。 */
+function checkCredentialRecords() {
+	const findings = []
+	const parsed = readCredentialRecords()
+	if (parsed === null) return findings
+	const duplicates = []
+	const seen = new Set()
+	for (const record of parsed.records) {
+		if (seen.has(record.key)) duplicates.push(record.key)
+		seen.add(record.key)
+	}
+	const cookieDb = join(appDataDir(), '@deepseek-ai', 'dsh-desktop', 'Network', 'Cookies')
+	let cookieSize = 0
+	try { cookieSize = statSync(cookieDb).size } catch (error) { cookieSize = 0 }
+	const byteSize = Buffer.byteLength(parsed.text, 'utf8')
+	const severity = duplicates.length > 0 || parsed.records.length >= 40 || byteSize > 200 * 1024
+		? 'high'
+		: (parsed.records.length >= 15 || byteSize > 80 * 1024 || cookieSize > 512 * 1024 ? 'medium' : null)
+	if (severity === null) return findings
+	findings.push(finding('credential-record-bloat', severity,
+		'登录凭据/cookie 记录在累积：' + parsed.records.length + ' 条' + (duplicates.length > 0 ? '（含重复 key）' : ''),
+		`\`${parsed.file}\` 的 records 有 ${parsed.records.length} 条、${byteSize} 字节`
+			+ (duplicates.length > 0 ? '，重复 key：' + duplicates.slice(0, 5).join('、') : '')
+			+ (cookieSize > 0 ? '；Electron cookie 库 ' + Math.round(cookieSize / 1024) + ' KB' : '')
+			+ '。每次启动/登录如果多存一条 grant，累积到一定数量会让 DSH 启动即失败且难以恢复。'
+			+ '一键修复会先备份、只保留每个 key 的最新一条记录；如果仍打不开，再备份并删除 credentials 后重新登录。',
+		parsed.file, 'compact-credentials'))
+	// cookie 库过大单独提醒（DSH 关着时才能安全清理）
+	if (cookieSize > 1024 * 1024) {
+		findings.push(finding('electron-cookie-bloat', 'medium',
+			'Electron cookie 库偏大：' + Math.round(cookieSize / 1024) + ' KB',
+			'`' + cookieDb + '` 可能积累了每次启动写入的登录 cookie。关闭 DSH 后备份并删除该文件（下次启动会重建），再重新登录即可。',
+			cookieDb, null))
+	}
+	return findings
+}
+
+function fixCompactCredentials() {
+	const parsed = readCredentialRecords()
+	if (parsed === null || parsed.start < 0) return { ok: false, message: '找不到 ' + join(dshHome(), '.credentials.yaml') + ' 或没有 records 段，不需要压缩。' }
+	const latest = new Map()
+	for (const record of parsed.records) latest.set(record.key, record)
+	if (latest.size === parsed.records.length) return { ok: true, unchanged: true, message: 'records 没有重复 key，不需要压缩。' }
+	const backup = join(backupDir(), 'credentials-' + Date.now() + '.yaml')
 	try {
+		mkdirp(dirname(backup))
+		copyFileSync(parsed.file, backup)
+	} catch (error) { return { ok: false, message: '备份 credentials 失败：' + String(error && error.message ? error.message : error) } }
+	const head = parsed.lines.slice(0, parsed.start + 1)
+	const body = []
+	for (const record of latest.values()) body.push(...record.block)
+	try { writeFileSync(parsed.file, head.concat(body).join('\n') + '\n', 'utf8') } catch (error) {
+		return { ok: false, message: '写回失败（备份在 ' + backup + '）：' + String(error && error.message ? error.message : error) }
+	}
+	return { ok: true, message: '已压缩登录记录：' + parsed.records.length + ' → ' + latest.size + ' 条，备份在 ' + backup + '。DSH 会自动重载凭据。' }
+}
+
+function patchBackupNames(profileDir) {	try {
 		return readdirSync(profileDir)
 			.filter(name => name.startsWith('cordis.patch.yml.bak'))
 			.sort()
@@ -814,6 +904,7 @@ const DETECTORS = {
 	'plugin-boot-failure': () => checkPluginBootFailure(),
 	'session-legacy-kind': () => checkLegacySessions(),
 	'credentials-version': () => checkCredentials(),
+	'credential-record-bloat': () => checkCredentialRecords(),
 	'patch-layer-missing': () => checkPatchLayer(),
 	'mcp-entry-broken': () => checkMcpEntries(),
 	'path-dead-dsh': () => checkPathVariable(),
@@ -926,6 +1017,7 @@ function scan() {
 		checkPluginBootFailure,
 		checkLegacySessions,
 		checkCredentials,
+		checkCredentialRecords,
 		checkPatchLayer,
 		checkMcpEntries,
 		checkPathVariable,
@@ -1435,6 +1527,7 @@ function fixPermissionTooBroad() {
 
 const FIXES = {
 	'desktop-label': fixDesktopLabel,
+	'compact-credentials': fixCompactCredentials,
 	'workspace-entry': fixWorkspaceEntries,
 	'profile-host-dup': fixProfileHostDup,
 	'restore-patch-layer': fixRestorePatchLayer,

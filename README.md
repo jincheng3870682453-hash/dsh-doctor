@@ -10,7 +10,7 @@
 
 [更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者清单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
 
-[![Version](https://img.shields.io/badge/Version-0.14.2-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.14.3-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)

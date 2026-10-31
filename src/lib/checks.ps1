@@ -629,6 +629,40 @@ function Test-DoctorStorageCorrupt {
     return $findings.ToArray()
 }
 
+function Test-DoctorCredentialRecords {
+    $findings = New-Object System.Collections.ArrayList
+    $file = Join-Path (Get-DshHome) '.credentials.yaml'
+    if (-not (Test-Path -LiteralPath $file)) { return $findings.ToArray() }
+    Write-DoctorStep ('Check credential records: ' + $file)
+    $lines = @()
+    try { $lines = @(Get-Content -LiteralPath $file -Encoding UTF8) } catch { return $findings.ToArray() }
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i += 1) { if ($lines[$i] -match '^records:\s*$') { $start = $i; break } }
+    if ($start -lt 0) { return $findings.ToArray() }
+    $keys = @{}
+    for ($i = $start + 1; $i -lt $lines.Count; $i += 1) {
+        $line = $lines[$i]
+        if ($line -match '^\S') { break }
+        $match = [regex]::Match($line, '^  (\S[^:]*):\s*$')
+        if ($match.Success) {
+            $key = $match.Groups[1].Value
+            if ($keys.ContainsKey($key)) { $keys[$key] += 1 } else { $keys[$key] = 1 }
+        }
+    }
+    $duplicates = @($keys.Keys | Where-Object { $keys[$_] -gt 1 })
+    $count = $keys.Count
+    $size = (Get-Item -LiteralPath $file).Length
+    $severity = ''
+    if ($duplicates.Count -gt 0 -or $count -ge 40 -or $size -gt 200KB) { $severity = 'High' }
+    elseif ($count -ge 15 -or $size -gt 80KB) { $severity = 'Medium' }
+    if ($severity -eq '') { return $findings.ToArray() }
+    $detail = 'records: ' + $count + ' entries, ' + $size + ' bytes'
+    if ($duplicates.Count -gt 0) { $detail += '; duplicate keys: ' + (($duplicates | Select-Object -First 5) -join ', ') }
+    $detail += '. A login grant appended on every launch can eventually make DSH fail to start. Back up the file and keep only the newest record per key (or delete it and sign in again).'
+    [void]$findings.Add((New-Finding -Id 'credential-record-bloat' -Severity $severity -Path $file -Title ('Credential records accumulating: ' + $count) -Detail $detail))
+    return $findings.ToArray()
+}
+
 function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
@@ -642,6 +676,7 @@ function Invoke-DoctorScan {
         'Test-DoctorMcpEntries',
         'Test-DoctorStaleHomeBackup',
         'Test-DoctorStorageCorrupt',
+        'Test-DoctorCredentialRecords',
         'Test-DoctorPermissionTooBroad'
     )
     $all = New-Object System.Collections.ArrayList

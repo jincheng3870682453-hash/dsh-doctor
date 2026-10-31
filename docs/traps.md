@@ -148,6 +148,19 @@ server.connect()                                    // 在 if 外调用 → Refe
 3. 需要旧会话/插件时从旧目录拷回（先备份新目录再拷）；
 4. 确认不要了再清理旧目录。
 
+### 21. 登录记录累积，约 72 次启动后 DSH 永久打不开
+
+**症状**：同一份配置用了一个月左右，DSH 突然永久起不来；重装无效。
+
+**根因**：`~/.dsh/.credentials.yaml` 的 `records` 每次启动/续期被追加一条登录 grant；数量多了，或同一 key 重复（YAML 解析器拒绝重复 key），host 加载凭据失败。
+
+**医生怎么认**：`credential-record-bloat`（v0.14.3）——重复 key 直接高危；条目 ≥ 40 也高危。
+
+**怎么救**：
+1. 一键修复 `compact-credentials`：备份后只保留每个 key 最新一条；
+2. 还不行：备份并删除 `.credentials.yaml`，重新登录；
+3. cookie 库过大：关闭 DSH，备份并删除 `Network\Cookies` 后重启。
+
 ## 三、会话格式类
 
 ### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）

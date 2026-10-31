@@ -17,6 +17,7 @@
 | [09](09-auto-guard-and-processes.md) | 自动巡检 / 进程回收 | 自伤 bug |
 | [10](10-notifications-and-update.md) | 通知归因 / 更新检查 | 自伤 bug |
 | [11](11-bundle-identity-drift.md) | 改包名后图标/面板消失 | 自伤 bug |
+| [12](12-credential-cookie-bloat.md) | 登录记录累积导致永久打不开 | DSH 引起 |
 
 ## 疑似待验证（排雷线索，不当结论用）
 
