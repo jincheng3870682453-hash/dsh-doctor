@@ -162,6 +162,21 @@ server.connect()                                    // 在 if 外调用 → Refe
 3. 或用 EXE：菜单 `9` / `dsh-doctor.exe clear-cookies`（自动备份）。
 4. 预防：每 1~2 个月清一次。
 
+### 22. 插件安装 EPERM：profile 目录被 Codex 沙箱锁死
+
+**症状**：装插件报 `EPERM: operation not permitted, open ...node_modules\<插件>\package.json`；目录在资源管理器里能看见但打不开，管理员/SYSTEM 也 Access denied。
+
+**根因**：Codex（ChatGPT 桌面版 MSIX）的 AppContainer + `bindflt` 沙箱把 `~/.dsh/profiles/...` 映射进沙箱，进程退出后 bind 映射残留，目录被内核锁死；pnpm 读 `package.json` 就 EPERM。
+
+**怎么认**：`profile-entry-locked`（v0.14.6）——扫 profile 的 `node_modules` 顶层，`EACCES/EPERM` 直接高危。
+
+**怎么救**：
+1. 卸载 Codex：`Get-AppxPackage OpenAI.Codex | Remove-AppxPackage`；
+2. 管理员停用 `CodexSandboxService.OpenAI.Codex`；
+3. **重启**（bindflt 只有重启释放）；
+4. 管理员 `takeown /f <目录> /r /d y` → `icacls <目录> /reset /t /c` → `rmdir /s /q <目录>`；
+5. 重开 DSH 重装插件。
+
 ## 三、会话格式类
 
 ### 16. 插件还在列表里，但功能不工作（插件版本与运行时不一致）

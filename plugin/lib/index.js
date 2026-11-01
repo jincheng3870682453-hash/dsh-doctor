@@ -356,6 +356,44 @@ function hostPackagesIn(dir) {
 	return readDirNames(dir).filter(name => CRITICAL_HOST_PACKAGES.includes(name))
 }
 
+/**
+ * Codex/AppContainer 的 bindflt 映射会在沙箱退出后留下"连 SYSTEM 都打不开"的目录。
+ * pnpm 随后读 package.json 就会 EPERM，表现为插件安装失败、重装也没用。
+ */
+function checkProfileEntryLocked() {
+	const findings = []
+	const profilesRoot = join(dshHome(), 'profiles')
+	if (!existsSync(profilesRoot)) return findings
+	const roots = []
+	for (const name of readDirNames(profilesRoot)) {
+		roots.push(join(profilesRoot, name, 'node_modules'))
+	}
+	roots.push(join(profilesRoot, 'node_modules'))
+	for (const modules of roots) {
+		if (!existsSync(modules)) continue
+		for (const name of readDirNames(modules)) {
+			if (name.startsWith('.') || name.startsWith('@')) continue
+			const entry = join(modules, name)
+			let locked = false
+			try {
+				readdirSync(entry)
+			} catch (error) {
+				const code = error && error.code
+				locked = code === 'EACCES' || code === 'EPERM'
+			}
+			if (!locked) continue
+			findings.push(finding('profile-entry-locked', 'high',
+				'插件目录被沙箱锁死：' + name,
+				'`' + entry + '` 连管理员/SYSTEM 都无法读取（Codex/AppContainer 的 bindflt 映射残留）。'
+					+ 'pnpm 安装插件时会报 `EPERM: operation not permitted, open ...\\package.json`，重试无效。'
+					+ '处理：卸载/停用 Codex 沙箱，重启一次，再用管理员运行 takeown/icacls 删除该目录；'
+					+ 'DSH 退出后也可以让医生创建一个开机自动清理任务。',
+				entry, null))
+		}
+	}
+	return findings
+}
+
 function checkProfileHostDuplicates() {
 	const findings = []
 	for (const dir of profileHostDirs()) {
@@ -907,6 +945,7 @@ const DETECTORS = {
 	'workspace-risky-path': () => checkWorkspaces(),
 	'desktop-low-label': () => checkDesktopAcl().filter(item => item.id === 'desktop-low-label'),
 	'profile-host-duplicate': () => checkProfileHostDuplicates(),
+	'profile-entry-locked': () => checkProfileEntryLocked(),
 	'desktop-session-activity': () => checkDesktopSessions(),
 	'crash-logs': () => checkCrashLogs(),
 	'plugin-boot-failure': () => checkPluginBootFailure(),
@@ -1021,6 +1060,7 @@ function scan() {
 		checkWorkspaces,
 		checkDesktopSessions,
 		checkProfileHostDuplicates,
+		checkProfileEntryLocked,
 		checkCrashLogs,
 		checkPluginBootFailure,
 		checkLegacySessions,

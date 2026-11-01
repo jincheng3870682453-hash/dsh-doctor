@@ -663,12 +663,35 @@ function Test-DoctorCredentialRecords {
     return $findings.ToArray()
 }
 
+function Test-DoctorProfileLockedEntries {
+    $findings = New-Object System.Collections.ArrayList
+    $profiles = Join-Path (Get-DshHome) 'profiles'
+    if (-not (Test-Path -LiteralPath $profiles)) { return $findings.ToArray() }
+    foreach ($profile in @(Get-ChildItem -LiteralPath $profiles -Directory -Force -ErrorAction SilentlyContinue)) {
+        $modules = Join-Path $profile.FullName 'node_modules'
+        if (-not (Test-Path -LiteralPath $modules)) { continue }
+        foreach ($entry in @(Get-ChildItem -LiteralPath $modules -Force -ErrorAction SilentlyContinue)) {
+            if (-not $entry.PSIsContainer) { continue }
+            if ($entry.Name.StartsWith('.') -or $entry.Name.StartsWith('@')) { continue }
+            $locked = $false
+            try { Get-ChildItem -LiteralPath $entry.FullName -Force -ErrorAction Stop | Out-Null }
+            catch { if ($_.Exception.Message -match 'denied|拒绝|EPERM|EACCES') { $locked = $true } }
+            if (-not $locked) { continue }
+            [void]$findings.Add((New-Finding -Id 'profile-entry-locked' -Severity 'High' -Path $entry.FullName `
+                -Title ('Plugin directory locked by sandbox: ' + $entry.Name) `
+                -Detail ('Access denied even for admin/SYSTEM (Codex/AppContainer bindflt residue). pnpm install fails with EPERM opening package.json. Remove Codex sandbox, reboot, then takeown/icacls/rd the directory as admin.')))
+        }
+    }
+    return $findings.ToArray()
+}
+
 function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
         'Test-DoctorWorkspaceRegistry',
         'Test-DoctorDesktopSessionActivity',
         'Test-DoctorProfileHostDup',
+        'Test-DoctorProfileLockedEntries',
         'Test-DoctorPluginManifests',
         'Test-DoctorPluginSourceKind',
         'Test-DoctorCrashLogs',

@@ -19,6 +19,7 @@
 | 10 | `path-dead-dsh` | `path-dead-dsh` | PATH 里的 `dsh` 指向不存在的文件 | 0.2 |
 | 11 | `workspace-not-writable` | `workspace-not-writable` | 工作区真的写不进去（起不来 / grantWrite Win32 5） | 0.5.3 |
 | 21 | `credential-record-bloat` | `compact-credentials` | 登录 grant 在 credentials records 里累积 / 重复 key → 启动即失败 | 0.14.3 |
+| 24 | `profile-entry-locked` | 只报告 | profile 的 node_modules 目录被 Codex/bindflt 锁死（安装插件 EPERM） | 0.14.6 |
 | 23 | `clear-cookies` | `clear-cookies` | 备份并删除 Electron cookie 库（需先退出 DSH）→ 解决 431 打不开 | 0.14.4 |
 | 22 | `electron-cookie-bloat` | 只报告 | Electron cookie 库过大（关闭 DSH 后备份删除） | 0.14.3 |
 | 19 | `stale-home-backup` | `stale-home-backup` | 发现了改名救急留下的旧 ~/.dsh（会话/插件/设置还在里面） | 0.13.10 |
