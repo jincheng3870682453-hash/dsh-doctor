@@ -39,8 +39,8 @@ async function main() {
 		const match = /^(\d+)\s+blob\s+([0-9a-f]+)\t(.+)$/.exec(line)
 		if (match === null) continue
 		const mode = match[1] === '100755' ? '100755' : '100644'
-		const path = match[2]
-		const sha = match[3]
+		const sha = match[2]
+		const path = match[3]
 		// 用 git 对象里的规范化内容（LF），不要直接读工作区：Windows 的 CRLF
 		// 会让远端 tree 与本地 HEAD tree 出现假差异。
 		const content = execSync('git cat-file blob ' + sha, { cwd: root, encoding: 'buffer' }).toString('base64')
