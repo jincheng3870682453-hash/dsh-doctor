@@ -62,7 +62,7 @@ icacls "$env:USERPROFILE\Desktop" /remove:d '*S-1-1-0'
 
 **根因**：同一进程里混进了第二份 `@deepseek-ai/dsh-tools`。两份包的 `Symbol("@deepseek-ai/dsh-tools.scheduler")` 不是同一个符号，拿到的是 `undefined`。
 
-**常见触发**：某个插件把宿主包（`@deepseek-ai/dsh-tools`、`dsh-skill`、`schemastery`）写进了自己的 `dependencies`，pnpm 就会在 profile 里装一份**真副本**。
+**常见触发**：某个插件把宿主包（`@deepseek-ai/dsh-tools`、`dsh-skill`、`schemastery`、`dsh-settings`…）写进了自己的 `dependencies`，pnpm 就会在 profile 里装一份**真副本**。
 
 **一击修复**：
 

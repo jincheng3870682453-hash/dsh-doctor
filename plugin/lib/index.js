@@ -26,7 +26,7 @@ const zstdDecompress = typeof zlib.zstdDecompressSync === 'function' ? zlib.zstd
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 
 const PREFIX = '/dsh-doctor'
-const CRITICAL_HOST_PACKAGES = ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis']
+const CRITICAL_HOST_PACKAGES = ['dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis', 'dsh-settings', 'dsh-llm', 'dsh-credentials', 'dsh-session']
 
 /**
  * 桌面 Low 完整性标签的判据。字段结构固定：ML;flags;rights;;;SID。

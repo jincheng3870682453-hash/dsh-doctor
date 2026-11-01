@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 # Read-only checks for dsh-doctor. Every check returns an array of findings and
 # must never throw: failures degrade into a Medium finding.
 
@@ -120,7 +120,7 @@ function Test-DoctorProfileHostDup {
     }
 
     # Only these host packages trigger the "Cannot read properties of undefined" crash.
-    $criticalNames = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis')
+    $criticalNames = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis', 'dsh-settings', 'dsh-llm', 'dsh-credentials', 'dsh-session')
     $flagged = New-Object System.Collections.ArrayList
     foreach ($dir in $dirs) {
         if ($dir.Name -like '*.stale*') { continue }
