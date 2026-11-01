@@ -1117,6 +1117,15 @@ function readLastScan() {
 	return { at: typeof data.at === 'number' ? data.at : 0, findings: data.findings }
 }
 
+/**
+ * 自动修复/后台隔离之后把上次体检缓存作废：否则面板照着旧缓存继续亮红点，
+ * 用户看到的是"已经修好了但还暴红"。
+ */
+function invalidateLastScan() {
+	scanCache = { at: 0, findings: null }
+	try { unlinkSync(lastScanFile()) } catch (error) { /* 没有缓存也无所谓 */ }
+}
+
 function saveLastScan(findings) {
 	try {
 		mkdirSync(join(dshHome(), 'dsh-doctor'), { recursive: true })
@@ -2334,6 +2343,7 @@ function startAutoGuard(ctx) {
 				message: '自动巡检：' + String(result.message || ''),
 				backup: typeof result.backup === 'string' ? result.backup : null,
 			})
+			if (result.ok === true && result.unchanged !== true) invalidateLastScan()
 			// 只有标签被降级（会白图标）才需要刷新外壳；单纯残留拒绝项不必刷。
 			if (result.ok === true && low) refreshShellIcons()
 		} catch (error) { /* 守护自己不许抛 */ }
@@ -2351,6 +2361,7 @@ function startAutoGuard(ctx) {
 			if (dupFixCount >= 3) return
 			dupFixCount += 1
 			const result = fixProfileHostDup()
+			if (result.ok === true) invalidateLastScan()
 			appendHistory({
 				at: new Date().toISOString(),
 				id: 'auto-profile-host-dup',
