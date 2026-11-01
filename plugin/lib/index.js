@@ -572,21 +572,29 @@ function checkCredentialRecords() {
 	const byteSize = Buffer.byteLength(parsed.text, 'utf8')
 	const severity = duplicates.length > 0 || parsed.records.length >= 40 || byteSize > 200 * 1024
 		? 'high'
-		: (parsed.records.length >= 15 || byteSize > 80 * 1024 || cookieSize > 512 * 1024 ? 'medium' : null)
-	if (severity === null) return findings
-	findings.push(finding('credential-record-bloat', severity,
-		'登录凭据/cookie 记录在累积：' + parsed.records.length + ' 条' + (duplicates.length > 0 ? '（含重复 key）' : ''),
-		`\`${parsed.file}\` 的 records 有 ${parsed.records.length} 条、${byteSize} 字节`
-			+ (duplicates.length > 0 ? '，重复 key：' + duplicates.slice(0, 5).join('、') : '')
-			+ (cookieSize > 0 ? '；Electron cookie 库 ' + Math.round(cookieSize / 1024) + ' KB' : '')
-			+ '。每次启动/登录如果多存一条 grant，累积到一定数量会让 DSH 启动即失败且难以恢复。'
-			+ '一键修复会先备份、只保留每个 key 的最新一条记录；如果仍打不开，再备份并删除 credentials 后重新登录。',
-		parsed.file, 'compact-credentials'))
-	// cookie 库过大单独提醒（DSH 关着时才能安全清理）
-	if (cookieSize > 1024 * 1024) {
+		: (parsed.records.length >= 15 || byteSize > 80 * 1024 ? 'medium' : null)
+	if (severity !== null) {
+		findings.push(finding('credential-record-bloat', severity,
+			'登录凭据记录在累积：' + parsed.records.length + ' 条' + (duplicates.length > 0 ? '（含重复 key）' : ''),
+			`\`${parsed.file}\` 的 records 有 ${parsed.records.length} 条、${byteSize} 字节`
+				+ (duplicates.length > 0 ? '，重复 key：' + duplicates.slice(0, 5).join('、') : '')
+				+ '。每次启动/登录如果多存一条 grant，累积到一定数量会让 DSH 启动即失败且难以恢复。'
+				+ '一键修复会先备份、只保留每个 key 的最新一条记录；如果仍打不开，再备份并删除 credentials 后重新登录。',
+			parsed.file, 'compact-credentials'))
+	}
+	// 真正会"永久打不开"的是 Electron cookie 库：每次启动换端口就多一条 host 认证 cookie，
+	// 攒到约 70 条时请求头超过上限（HTTP 431）→ Web authentication failed。
+	if (cookieSize > 64 * 1024) {
+		findings.push(finding('electron-cookie-bloat', 'high',
+			'Electron cookie 库已到危险体积：' + Math.round(cookieSize / 1024) + ' KB',
+			'`' + cookieDb + '` 会随着每次启动累积一条登录 cookie；到约 70 条时请求头超限（431），DSH 报 Web authentication failed 且无法进入。'
+				+ '处理：完全退出 DSH，备份后删除同目录下的 `Cookies` 和 `Cookies-journal`（下次启动会重建），再打开并重新登录。'
+				+ 'EXE 可用：dsh-doctor.exe fix -Id clear-cookies（会先检查 DSH 是否已退出）。',
+			cookieDb, null))
+	} else if (cookieSize > 32 * 1024) {
 		findings.push(finding('electron-cookie-bloat', 'medium',
 			'Electron cookie 库偏大：' + Math.round(cookieSize / 1024) + ' KB',
-			'`' + cookieDb + '` 可能积累了每次启动写入的登录 cookie。关闭 DSH 后备份并删除该文件（下次启动会重建），再重新登录即可。',
+			'`' + cookieDb + '` 可能在累积每次启动写入的登录 cookie（约 70 条就会 431 打不开）。建议尽快退出 DSH 后清理一次。',
 			cookieDb, null))
 	}
 	return findings

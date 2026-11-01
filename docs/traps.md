@@ -148,18 +148,19 @@ server.connect()                                    // 在 if 外调用 → Refe
 3. 需要旧会话/插件时从旧目录拷回（先备份新目录再拷）；
 4. 确认不要了再清理旧目录。
 
-### 21. 登录记录累积，约 72 次启动后 DSH 永久打不开
+### 21. 每次启动多存一条登录 cookie，约 70 次后 DSH 永久打不开
 
-**症状**：同一份配置用了一个月左右，DSH 突然永久起不来；重装无效。
+**症状**：用了一个月、启动约 70 次后，DSH 突然报 `Web authentication failed` / 应用无法启动；重装无效。
 
-**根因**：`~/.dsh/.credentials.yaml` 的 `records` 每次启动/续期被追加一条登录 grant；数量多了，或同一 key 重复（YAML 解析器拒绝重复 key），host 加载凭据失败。
+**根因**：桌面端每次启动换 Web 端口 → Electron cookie 库里多一条 host 登录 cookie（`%APPDATA%\@deepseek-ai\dsh-desktop\Network\Cookies`），旧条目从不清理；约 70 条时请求头超限（HTTP 431）→ 鉴权失败。
 
-**医生怎么认**：`credential-record-bloat`（v0.14.3）——重复 key 直接高危；条目 ≥ 40 也高危。
+**医生怎么认**：`electron-cookie-bloat`（v0.14.4）：cookie 库 > 64 KB 高危、> 32 KB 提醒。
 
 **怎么救**：
-1. 一键修复 `compact-credentials`：备份后只保留每个 key 最新一条；
-2. 还不行：备份并删除 `.credentials.yaml`，重新登录；
-3. cookie 库过大：关闭 DSH，备份并删除 `Network\Cookies` 后重启。
+1. 完全退出 DSH；
+2. 备份并删除 `Network\Cookies` 和 `Network\Cookies-journal`（会重建，需重新登录）；
+3. 或用 EXE：菜单 `9` / `dsh-doctor.exe clear-cookies`（自动备份）。
+4. 预防：每 1~2 个月清一次。
 
 ## 三、会话格式类
 

@@ -432,6 +432,7 @@ function Invoke-RescueMenu {
         Write-Host '   6) 从备份回滚'
         Write-Host '   7) 起网页版（逃生）'
         Write-Host '   8) 生成环境差异报告（对照标准 DSH，可提交 issue）'
+        Write-Host '   9) 清理登录 cookie 累积（先完全退出 DSH）'
         Write-Host '   0) 退出'
         Write-Host ''
         $choice = Read-Host '   选择'
@@ -449,6 +450,7 @@ function Invoke-RescueMenu {
                 '6' { Show-RescueRollbackMenu }
                 '7' { Start-RescueWeb }
                 '8' { Show-RescueDiffReport }
+                '9' { Repair-DoctorCookies }
                 '0' { return }
                 default { Write-DoctorWarn '无效的选择。' }
             }
@@ -468,6 +470,8 @@ if ($env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {
     Show-RescueDiffReport
 } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diag') {
     Show-RescueWriteDiagnostics
+} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'clear-cookies') {
+    Repair-DoctorCookies
 } else {
     Invoke-RescueMenu
 }

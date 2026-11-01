@@ -191,6 +191,34 @@ function Repair-DoctorPatchLayer {
     Write-DoctorInfo ('Restored cordis.patch.yml for: ' + ($restored -join ', ') + '. Restart the desktop app.')
 }
 
+function Repair-DoctorCookies {
+    $running = @(Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue)
+    if ($running.Count -gt 0) {
+        throw 'DSH 还在运行：请先从托盘完全退出 DSH，再执行清理。'
+    }
+    $network = Join-Path $env:APPDATA '@deepseek-ai\dsh-desktop\Network'
+    if (-not (Test-Path -LiteralPath $network)) {
+        Write-DoctorInfo '没有找到 cookie 目录，无需清理。'
+        return
+    }
+    $backup = Join-Path (Get-DshHome) ('dsh-doctor-backups\cookies-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+    New-Item -ItemType Directory -Force -Path $backup | Out-Null
+    $moved = @()
+    foreach ($name in @('Cookies', 'Cookies-journal')) {
+        $src = Join-Path $network $name
+        if (-not (Test-Path -LiteralPath $src)) { continue }
+        Copy-Item -LiteralPath $src -Destination (Join-Path $backup $name) -Force
+        Remove-Item -LiteralPath $src -Force
+        $moved += $name
+    }
+    if ($moved.Count -eq 0) {
+        Write-DoctorInfo '没有可清理的 cookie 文件。'
+        return
+    }
+    Write-DoctorInfo ('已备份并清理：' + ($moved -join '、') + ' → ' + $backup)
+    Write-DoctorInfo '重新打开 DSH 并登录即可；每次启动仍会多一条，建议每 1~2 个月清一次。'
+}
+
 function Invoke-DoctorFix {
     param(
         [Parameter(Mandatory)][string]$Id,
@@ -217,8 +245,11 @@ function Invoke-DoctorFix {
         'restore-patch-layer' {
             Repair-DoctorPatchLayer
         }
+        'clear-cookies' {
+            Repair-DoctorCookies
+        }
         default {
-            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, profile-host-dup, workspace-entry, restore-patch-layer.')
+            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, profile-host-dup, workspace-entry, restore-patch-layer, clear-cookies.')
         }
     }
 }
