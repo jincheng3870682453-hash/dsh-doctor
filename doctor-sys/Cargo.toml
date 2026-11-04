@@ -1,0 +1,17 @@
+[package]
+name = "doctor-sys"
+version = "0.2.0"
+edition = "2021"
+description = "dsh-doctor 底层原语引擎：安全描述符 / 完整性标签 / 进程 / 端口 / 外壳刷新 / 原生通知。零第三方依赖，JSON over stdio。"
+
+[[bin]]
+name = "doctor-sys"
+path = "src/main.rs"
+
+# 静态链接 CRT：产物是真正的单文件 exe，目标机器什么都不用装。
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+strip = true
+codegen-units = 1
