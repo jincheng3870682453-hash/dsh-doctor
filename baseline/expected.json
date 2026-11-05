@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "description": "标准 DSH 安装的基线。医生的“差异报告”会把用户机器与这份基线比较。",
+  "runtime": {
+    "note": "只做事实记录与宽松判断；DSH 版本演进很快，不硬性卡版本号。",
+    "nodeMajorAllowed": [18, 20, 22, 24],
+    "electronMajorMin": 30
+  },
+  "profiles": {
+    "requiredBundles": [
+      "@deepseek-ai/dsh-base"
+    ],
+    "guiProfiles": ["desktop", "web"],
+    "guiRequiredBundles": [
+      "@deepseek-ai/dsh-web-app"
+    ],
+    "forbiddenDependencies": [
+      "@deepseek-ai/dsh-tools",
+      "@deepseek-ai/dsh-skill",
+      "@deepseek-ai/schemastery",
+      "@deepseek-ai/dsh-util-values",
+      "schemastery"
+    ],
+    "forbiddenNodeModulesTopLevel": [
+      "dsh-tools",
+      "dsh-skill",
+      "schemastery",
+      "dsh-util-values"
+    ],
+    "requiredFiles": [
+      "package.json",
+      "cordis.patch.yml"
+    ]
+  },
+  "workspace": {
+    "forbiddenPaths": [
+      "<home>",
+      "<home>/Desktop",
+      "<home>/Documents",
+      "<home>/Downloads",
+      "<driveRoot>"
+    ]
+  },
+  "state": {
+    "desktopIntegrity": "Medium（低完整性会让桌面图标变白）",
+    "patchLayer": "cordis.patch.yml 不应为空（除非从未配置过）",
+    "duplicateHostPackages": "profile 的 node_modules 里不应出现宿主包副本",
+    "legacySessionKind": "会话里不应出现 kind:\"plugin\"（v4 拒收）"
+  },
+  "report": {
+    "submitAs": "https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new",
+    "note": "报告含本机路径与用户名，提交前自行脱敏。"
+  }
+}

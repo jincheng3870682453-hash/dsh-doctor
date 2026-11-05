@@ -1,0 +1,3 @@
+# Keep text files LF everywhere so scripts behave identically on Windows and CI.
+* text=auto eol=lf
+*.cmd text eol=crlf
