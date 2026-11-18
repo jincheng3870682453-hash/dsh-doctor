@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="270" height="44" viewBox="0 0 270 44" role="img" aria-label="DSH 私人医生 · 贡献者">
+  <defs>
+    <linearGradient id="dshg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4D6BFE"/>
+      <stop offset="1" stop-color="#7A5CF0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="270" height="44" rx="8" fill="url(#dshg)"/>
+  <path d="M20 22c0-6 5-11 11-11s11 5 11 11c0 5-3 8-6 10l-5 3-5-3c-3-2-6-5-6-10z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="31" cy="21" r="2.4" fill="#fff"/>
+  <text x="52" y="20" fill="#fff" font-family="'Segoe UI', 'Microsoft YaHei', sans-serif" font-size="13" font-weight="700">DSH 私人医生</text>
+  <text x="52" y="35" fill="#EAF0FF" font-family="'Segoe UI', 'Microsoft YaHei', sans-serif" font-size="11">贡献者 · CONTRIBUTOR</text>
+</svg>
