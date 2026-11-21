@@ -1,0 +1,35 @@
+{
+  "protocolVersion": 1,
+  "id": "example-pack",
+  "title": "示例：我自己踩过的坑",
+  "checks": [
+    {
+      "id": "example:workspace-on-desktop",
+      "title": "工作区注册到了桌面（图标反复变白的根）",
+      "severity": "high",
+      "detail": "每次给这个工作区授沙箱写权限，DSH 都会把桌面降成 Low 完整性，图标就白了。",
+      "detect": { "type": "workspace-risky-path" },
+      "fix": { "type": "workspace-entry" }
+    },
+    {
+      "id": "example:desktop-low-label",
+      "title": "桌面被打上了 Low 完整性标签",
+      "severity": "high",
+      "detail": "Explorer 在低完整性目录里取不到图标，所以删缓存没有用。",
+      "detect": { "type": "acl", "path": "{{desktop}}", "test": "low-label" },
+      "fix": { "type": "desktop-label" }
+    },
+    {
+      "id": "example:legacy-plugin-kind",
+      "title": "插件源码里还有 kind: \"plugin\" 的旧写法",
+      "severity": "medium",
+      "detail": "会话格式 v4 拒收这种写法，含它的插件会让每一轮都报 producer-owned source kind。",
+      "detect": {
+        "type": "file-regex",
+        "path": "{{profiles}}",
+        "pattern": "kind\\s*:\\s*[\"']plugin[\"']",
+        "maxFiles": 400
+      }
+    }
+  ]
+}

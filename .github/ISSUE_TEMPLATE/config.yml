@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 先看修复清单（也许不用提 issue）
+    url: https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/docs/fixable.md
+    about: 按“你看到的现象”列出能一键修 / 只检测的情况，含根因与对应坑。
+  - name: 安装与使用说明
+    url: https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/README.md
+    about: npm 包名安装、插件 zip、EXE、环境包、MCP 等入口。
+  - name: 更新记录
+    url: https://github.com/jincheng3870682453-hash/dsh-doctor/blob/main/UPDATES.md
+    about: 每个版本改了什么，以及怎么升级。
