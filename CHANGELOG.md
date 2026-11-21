@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14.12 — 2026-11-21
+
+- **新增 `workspace-low-label` / `workspace-everyone-deny`（JS + PS）**：注册的工作区（合法项目目录）被打上 Low 完整性标签或留着 Everyone 删除拒绝项时直接报出——这是桌面之外的 1 号坑。表现为：会话里编译出的 exe 继承 Low，运行期写入全失败；安装器（NSIS 等）展开时报拒绝访问；拖文件弹安全警告。
+- **为什么以前探不到**：`workspace-not-writable` 的真写探针用 Medium 进程写 Low 对象是放行的（完整性模型只拦向上写），所以这条坑只能靠读 SDDL 判据。
+- **新增修复 `workspace-label`（JS + PS）**：把注册工作区的标签改回 Medium 并摘掉拒绝项——先 `icacls /save` 备份，引擎优先 / icacls 兜底，改完复检 fail-closed（读不回 SDDL = 失败），能力 ACE 保留（沙箱写入不受影响）。危险项不进一键修复白名单之外的位置……实际上它足够安全（与 desktop-label 同一链路），CLI `ONE_CLICK_FIXES` 与 PS `Invoke-DoctorFixAll` 映射均已纳入。
+- **重构 `fixDesktopLabelUnlocked` → `fixIntegrityLabelOnPath(target, options)`**：桌面与工作区共用同一条「备份 → 改标签 → 删拒绝 → 复检 → 刷外壳（可选）」链路。
+- 检查包协议新增检测原语 `workspace-low-label` / `workspace-everyone-deny` 与修复原语 `workspace-label`（`protocol/check-pack.schema.json` + `docs/protocol.md`）。
+- 新增案例 `bugs/16-workspace-low-label.md`（含上游 discussion #7709 / #9314 / #9559 / #10270 与官方"有意设计"回应）；`docs/traps.md` 第 25 条；测试 `tests/workspace-label.test.mjs` 进 CI integration。
+
 ## v0.14.11 — 2026-11-18
 
 - **版本检测重写（JS + PS）**：

@@ -25,7 +25,7 @@ import { scan, readHistory, rescueWeb, applyFixById } from '../plugin/lib/index.
 const require = createRequire(import.meta.url)
 const { version: PLUGIN_VERSION } = require('../plugin/package.json')
 
-const FIX_IDS = ['desktop-label', 'workspace-entry', 'profile-host-dup', 'restore-patch-layer']
+const FIX_IDS = ['desktop-label', 'workspace-label', 'workspace-entry', 'profile-host-dup', 'restore-patch-layer']
 
 /** 引擎原语表（封闭白名单，与 doctor-sys/README.md 一致）。 */
 const SYS_READ_OPS = ['acl-read', 'proc-list', 'port-probe', 'port-pid', 'selftest', 'version']

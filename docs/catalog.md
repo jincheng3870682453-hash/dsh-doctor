@@ -33,6 +33,8 @@
 | 15 | `runtime-metadata-stale` | `runtime-metadata-stale` | runtime.json 的 desktopVersion 与桌面端实际版本不一致（更新后不刷新）；0.14.11 起 CLI/EXE 也能拿准确版本（自解 app.asar） | 0.13.4，0.14.11 增强 |
 | 13 | `bundle-identity-drift` | `bundle-identity-drift` | 依赖名 / 包名 / 客户端模块 id 三者不一致（改了包名没同步 → 图标面板静默消失） | 0.13.3 |
 | 12 | `workspace-not-grantable` | `workspace-not-grantable` | Windows：owner 不是你且没有 WRITE_DAC，DSH 授不了沙箱权限 | 0.5.3 |
+| 27 | `workspace-low-label` | `workspace-low-label` | 注册的工作区被打上 Low 完整性标签 → 编译产物继承 Low、安装器报错、拖文件弹警告 | 0.14.12 |
+| 28 | `workspace-everyone-deny` | `workspace-low-label`（同一 SDDL 判据） | 工作区留着 Everyone 删除拒绝项，挡住项目内正常清理 | 0.14.12 |
 
 ## 二、修复项（可回滚）
 
@@ -43,6 +45,7 @@
 | 3 | `profile-host-dup` | 把 profile 里的 `@deepseek-ai` 宿主包副本改名隔离 | 原名保留，加 `.stale-<ts>` 后缀即可改回 | 重新扫描，确认不再命中 | 重启桌面端 |
 | 4 | `restore-patch-layer` | 从最近的 `cordis.patch.yml.bak-*` 恢复 patch 层 | 当前空文件另存 `.empty-<ts>` | 重读文件大小 > 0 | 重启桌面端 |
 | 5 | `workspace-acl` | 给当前账号补工作区完全控制 | `~/.dsh/dsh-doctor-backups/workspace-acl-<ts>.txt`（`icacls /restore`） | 重新写测试文件成功 | 立即 |
+| 6 | `workspace-label` | 把注册工作区的完整性标签 `Low → Medium`；摘掉 `Everyone` 删除拒绝项 | `~/.dsh/dsh-doctor-backups/integrity-acl-<ts>.txt`（`icacls /restore`） | 重读 SDDL，确认不再含 `S:(ML;;…;;;LW)`（读不到 = 失败） | 立即（沙箱写入不受影响：能力 ACE 保留） |
 
 ## 三、只报告、不自动修（以及为什么）
 

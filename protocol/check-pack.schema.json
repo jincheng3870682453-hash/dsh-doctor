@@ -48,6 +48,8 @@
             "path-dead-dsh",
             "workspace-not-writable",
             "workspace-not-grantable",
+            "workspace-low-label",
+            "workspace-everyone-deny",
             "acl",
             "file-regex",
             "dir-contains"
@@ -82,7 +84,7 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["desktop-label", "workspace-entry", "profile-host-dup", "restore-patch-layer", "workspace-acl"] }
+        "type": { "enum": ["desktop-label", "workspace-label", "workspace-entry", "profile-host-dup", "restore-patch-layer", "workspace-acl"] }
       }
     }
   }

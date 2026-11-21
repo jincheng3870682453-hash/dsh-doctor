@@ -927,6 +927,52 @@ function checkWorkspaceGrantability() {
 	return findings
 }
 
+/**
+ * 工作区（合法项目目录）被打上 Low 完整性标签：桌面之外的 1 号坑。
+ * DSH 把"向下写"的隔离手段盖在了用户自己的生产目录上——缓存的前提是"这个目录是沙箱内部"，
+ * 效果却活过了这个前提：
+ *   Low 标签 → Windows 把目录视为不可信位置，拖文件弹警告；
+ *   会话里编译出的 exe 继承 Low，运行期写文件全部失败；
+ *   安装器往子目录展开时报拒绝访问。
+ * 写探针探不出它（Medium 进程写 Low 对象是放行的），只能读 SDDL——所以单独一条检查。
+ */
+function checkWorkspaceLabels() {
+	const findings = []
+	if (!isWindows) return findings
+	const registry = readWorkspaceRegistry()
+	if (registry === null) return findings
+	for (const workspace of registry.list) {
+		const target = workspace.path
+		if (!existsSync(target)) continue
+		const title = typeof workspace.title === 'string' && workspace.title.length > 0 ? workspace.title : target
+		const sddl = aclSddl(target)
+		// 读不到 ≠ 干净：和桌面一样 fail-closed，静默漏报比误报更危险。
+		if (sddl.length === 0) {
+			findings.push(finding('workspace-acl-unreadable', 'medium',
+				'工作区 ACL 读不到，无法判断完整性标签：' + title,
+				'引擎和 PowerShell 都没拿到这个目录的 SDDL。如果它被盖过 Low 标签，会话里编译的程序、安装器都会受影响；先解决读取问题。',
+				target, null))
+			continue
+		}
+		if (LOW_LABEL_PATTERN.test(sddl)) {
+			findings.push(finding('workspace-low-label', 'high',
+				'工作区被打了 Low 完整性标签：' + title,
+				'沙箱授写权限时把「向下写」的隔离手段盖在了你自己的项目目录上。Low 标签会让 Windows 把这里当成不可信位置：'
+					+ '会话里编译出的 exe 继承 Low，运行期写文件全部失败；安装器往子目录展开时报拒绝访问；从资源管理器拖文件会弹安全警告。'
+					+ '写入本身不受影响（写靠能力 ACE），一键修复改回 Medium 并保留能力 ACE。'
+					+ '注意：下次 DSH 给这个工作区供给权限时可能重新盖上；反复出现请把工作区移出注册表（workspace-entry）。',
+				target, 'workspace-label'))
+		}
+		if (/\(D;[^)]*;;;WD\)/.test(sddl)) {
+			findings.push(finding('workspace-everyone-deny', 'medium',
+				'工作区留着 Everyone 的删除拒绝项：' + title,
+				'沙箱授权时盖上的，DSH 从不回收。它挡住子目录的正常清理，安装器展开临时文件时也可能被拒。一键修复会摘掉它，写入能力不受影响。',
+				target, 'workspace-label'))
+		}
+	}
+	return findings
+}
+
 /** 工作区可写性：真写一个临时文件再删掉——这是"起不来"最硬的证据。 */
 function checkWorkspaceWritability() {
 	const findings = []
@@ -1015,6 +1061,8 @@ const DETECTORS = {
 	'rescue-instance-dead': () => checkRescueInstance(),
 	'workspace-not-writable': () => checkWorkspaceWritability(),
 	'workspace-not-grantable': () => checkWorkspaceGrantability(),
+	'workspace-low-label': () => checkWorkspaceLabels().filter(item => item.id === 'workspace-low-label'),
+	'workspace-everyone-deny': () => checkWorkspaceLabels().filter(item => item.id === 'workspace-everyone-deny'),
 	'zombie-dsh-process': () => checkZombieProcesses(),
 	'bundle-identity-drift': () => checkBundleIdentityDrift(),
 	'bundle-version-skew': () => checkBundleVersionSkew(),
@@ -1129,6 +1177,7 @@ function scan() {
 		checkRescueInstance,
 		checkWorkspaceWritability,
 		checkWorkspaceGrantability,
+		checkWorkspaceLabels,
 		checkZombieProcesses,
 		checkBundleIdentityDrift,
 		checkBundleVersionSkew,
@@ -1143,10 +1192,12 @@ function scan() {
 		}
 	}
 	findings.push(...loadCheckPacks())
+	// 去重键必须含 finding id：不同检查（desktop-low-label / workspace-low-label）
+	// 可能对同一路径给出同严重度、同 fixId，只按 severity|path|fixId 会误并。
 	const seen = new Set()
 	const unique = []
 	for (const item of findings) {
-		const key = [item.severity, item.path, item.fixId].join('|')
+		const key = [item.id, item.severity, item.path, item.fixId].join('|')
 		if (seen.has(key)) continue
 		seen.add(key)
 		unique.push(item)
@@ -1320,57 +1371,107 @@ function fixDesktopLabel() {
 }
 
 function fixDesktopLabelUnlocked() {
+	return fixIntegrityLabelOnPath(desktopPath(), { what: '桌面', refreshShell: true })
+}
+
+/**
+ * 把任意目录的完整性标签改回 Medium（+ 摘掉 Everyone 删除拒绝项）。
+ * 桌面修复（desktop-label）和工作区修复（workspace-label）共用同一条链路：
+ * icacls /save 备份 → 引擎优先 / icacls 兜底 → 复检 fail-closed → 刷新外壳（可选）。
+ */
+function fixIntegrityLabelOnPath(target, options = {}) {
+	const what = options.what || '目录'
 	if (!isWindows) {
 		return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
 	}
-	const desktop = desktopPath()
-	if (!existsSync(desktop)) return { ok: false, message: '找不到桌面目录：' + desktop }
-	const before = aclSddl(desktop)
+	if (!existsSync(target)) return { ok: false, message: '目录不存在：' + target }
+	const before = aclSddl(target)
 	if (before.length === 0) {
-		// 读不到就动手是瞎修：明确失败，让用户知道当前看不到桌面 ACL 的状态。
-		return { ok: false, message: '读不到桌面 ACL（引擎和 PowerShell 都失败了），不敢动手。可以先重新体检看看详情。' }
+		// 读不到就动手是瞎修：明确失败，让用户知道当前看不到 ACL 的状态。
+		return { ok: false, message: '读不到 ' + what + '的 ACL（引擎和 PowerShell 都失败了），不敢动手。可以先重新体检看看详情。' }
 	}
 	if (!LOW_LABEL_PATTERN.test(before) && !/\(D;[^)]*;;;WD\)/.test(before)) {
-		return { ok: true, unchanged: true, message: '桌面 ACL 已经是干净的，不需要修。' }
+		return { ok: true, unchanged: true, message: what + '的 ACL 已经是干净的，不需要修。' }
 	}
-	const backupFile = join(backupDir(), 'desktop-acl-' + Date.now() + '.txt')
+	const backupFile = join(backupDir(), 'integrity-acl-' + Date.now() + '.txt')
 	// 备份仍用 icacls /save 的格式（EXE 的回滚路径认它）；引擎只在 icacls 不可用时兜底。
-	let save = powershell('icacls ' + quote(desktop) + ' /save ' + quote(backupFile))
+	let save = powershell('icacls ' + quote(target) + ' /save ' + quote(backupFile))
 	let engineUsed = false
 	if (!save.ok && doctorSysPath() !== null) {
-		const viaEngine = doctorSys('acl-save', { path: desktop, file: backupFile + '.json' })
+		const viaEngine = doctorSys('acl-save', { path: target, file: backupFile + '.json' })
 		if (viaEngine !== null && viaEngine.ok === true) save = { ok: true, out: backupFile + '.json' }
 	}
 	if (LOW_LABEL_PATTERN.test(before)) {
-		const viaEngine = doctorSys('set-integrity-label', { path: desktop, label: 'medium', recursive: true }, 120000)
+		const viaEngine = doctorSys('set-integrity-label', { path: target, label: 'medium', recursive: true }, 120000)
 		if (viaEngine !== null && viaEngine.ok === true) {
 			engineUsed = true
 		} else {
-			const result = powershell('icacls ' + quote(desktop) + " /setintegritylevel '(OI)(CI)Medium'")
+			const result = powershell('icacls ' + quote(target) + " /setintegritylevel '(OI)(CI)Medium'")
 			if (!result.ok) return { ok: false, message: '改完整性标签失败：' + (result.err || result.out) }
 		}
 	}
 	if (/\(D;[^)]*;;;WD\)/.test(before)) {
-		const viaEngine = doctorSys('remove-deny-ace', { path: desktop, everyone: true }, 120000)
+		const viaEngine = doctorSys('remove-deny-ace', { path: target, everyone: true }, 120000)
 		if (viaEngine !== null && viaEngine.ok === true) {
 			engineUsed = true
 		} else {
-			powershell('icacls ' + quote(desktop) + " /remove:d '*S-1-1-0'")
+			powershell('icacls ' + quote(target) + " /remove:d '*S-1-1-0'")
 		}
 	}
-	const after = aclSddl(desktop)
+	const after = aclSddl(target)
 	// 复检读不到 = 没验证过：宁可报失败（fail-closed），不能拿空串当"没有 Low"。
 	const verified = after.length > 0 && !LOW_LABEL_PATTERN.test(after)
-	if (verified) refreshShellIcons()
+	if (verified && options.refreshShell === true) refreshShellIcons()
 	return {
 		ok: verified,
 		verified,
 		message: verified
-			? '桌面标签已改回 Medium，并已通知外壳重新取图标。' + (engineUsed ? '（doctor-sys 引擎）' : '')
+			? what + '的标签已改回 Medium，写入能力不受影响。' + (engineUsed ? '（doctor-sys 引擎）' : '')
+				+ (options.refreshShell === true ? ' 已通知外壳重新取图标。' : '')
 			: after.length === 0
-				? '改完后读不回桌面 ACL，无法验证是否修好。请重新体检确认。'
+				? '改完后读不回 ACL，无法验证是否修好。请重新体检确认。'
 				: '改完复检仍看到 Low 标签，请把这条反馈给我。',
 		backup: save.ok ? backupFile : null,
+	}
+}
+
+/** 工作区被打上 Low 标签：合法项目目录被当成沙箱内部，编译产物/安装器/拖放全受影响。 */
+function fixWorkspaceLabel() {
+	if (!isWindows) {
+		return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
+	}
+	const registry = readWorkspaceRegistry()
+	if (registry === null) return { ok: false, message: '找不到工作区注册表，没有可修的目录。' }
+	const lock = acquireAclLock()
+	if (lock === null) return { ok: false, message: '另一个 ACL 修复正在进行，稍后再试。' }
+	try {
+		const repaired = []
+		const failed = []
+		for (const workspace of registry.list) {
+			const target = workspace.path
+			if (!existsSync(target)) continue
+			const result = fixIntegrityLabelOnPath(target, { what: '工作区「' + (workspace.title || target) + '」' })
+			if (result.unchanged === true) continue
+			if (result.ok === true) {
+				repaired.push(target + (result.backup ? '（备份 ' + result.backup + '）' : ''))
+			} else {
+				failed.push(target + '：' + (result.message || '失败原因未知'))
+			}
+		}
+		if (repaired.length === 0 && failed.length === 0) {
+			return { ok: true, unchanged: true, message: '所有工作区的标签都是干净的，不需要修。' }
+		}
+		if (failed.length > 0) {
+			return { ok: false, message: '部分工作区修复失败：' + failed.join('；') }
+		}
+		return {
+			ok: true,
+			verified: true,
+			message: '已把 ' + repaired.length + ' 个工作区的标签改回 Medium（能力 ACE 保留，沙箱写入不受影响）。'
+				+ '如果 DSH 之后又盖上（反复复发），请把该工作区移出注册表（workspace-entry）断根。',
+		}
+	} finally {
+		releaseAclLock(lock)
 	}
 }
 
@@ -1639,6 +1740,7 @@ function fixPermissionTooBroad() {
 
 const FIXES = {
 	'desktop-label': fixDesktopLabel,
+	'workspace-label': fixWorkspaceLabel,
 	'compact-credentials': fixCompactCredentials,
 	'create-workspace-dir': fixCreateWorkspaceDir,
 	'workspace-entry': fixWorkspaceEntries,
@@ -3250,7 +3352,7 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN, sanitizeText, readAsarJson, compareSemver, semverSatisfies, unmetDshRequirements }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN, sanitizeText, readAsarJson, compareSemver, semverSatisfies, unmetDshRequirements, fixIntegrityLabelOnPath }
 
 export function applyFixById(id) {
 	const fix = FIXES[id]

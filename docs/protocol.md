@@ -67,6 +67,8 @@
 | `path-dead-dsh` | — | PATH 里有没有指向不存在文件的 `dsh` 命令 |
 | `workspace-not-writable` | — | 工作区真的写不进去（会真写一个临时文件再删） |
 | `workspace-not-grantable` | — | Windows：owner 不是你、也没有 WRITE_DAC，DSH 授不了沙箱权限 |
+| `workspace-low-label` | — | 注册的工作区目录被打上了 Low 完整性标签（合法项目目录被当成沙箱内部） |
+| `workspace-everyone-deny` | — | 注册的工作区目录留着沙箱盖的 Everyone 删除拒绝项 |
 
 > 平台说明：`desktop-low-label` 只在 Windows 有；macOS/Linux 上桌面检查换成 `desktop-world-writable`（POSIX 权限位）。
 
@@ -89,6 +91,7 @@
 | `fix.type` | 作用 |
 | --- | --- |
 | `desktop-label` | 桌面完整性标签改回 Medium + 摘掉 Everyone 拒绝项（有备份） |
+| `workspace-label` | 把注册工作区的完整性标签改回 Medium + 摘掉 Everyone 拒绝项（有备份；能力 ACE 保留，沙箱写入不受影响） |
 | `workspace-entry` | 把危险工作区从注册表移除（优先走 DSH 服务，会话文件保留） |
 | `profile-host-dup` | 把 profile 里的宿主包副本改名隔离（可还原） |
 | `restore-patch-layer` | 从最近备份恢复被清空的 `cordis.patch.yml`（先备份当前状态） |

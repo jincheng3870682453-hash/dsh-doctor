@@ -60,6 +60,14 @@
 - **医生**：[可修] 先 `icacls /save` 备份 ACL，再给当前账号补完全控制，改完**真写一个文件复测**。
 - **详情**：[traps #3](traps.md)
 
+<a id="workspace-label"></a>
+## 项目目录里编译的程序写文件全失败 / 安装器报拒绝访问
+
+- **你会看到**：在 DSH 会话里编译出的 exe 一运行就写不了配置/日志；安装器（NSIS 等）往项目目录展开时报拒绝访问；从资源管理器往外拖文件弹安全警告。目录权限看起来完全正常。
+- **根因**：DSH 给工作区授沙箱写权限时，把「向下写」的隔离手段盖在了**你自己的项目目录**上——目录被打上 Low 完整性标签，Windows 把它视为不可信位置。目录里的程序继承 Low 后做任何"向上写"都会被拒。写权限探针探不出它（Medium 进程写 Low 对象是放行的），只能读 SDDL。
+- **医生**：[可修] **workspace-label**：把注册工作区的标签改回 Medium（先备份 ACL，能力 ACE 保留，沙箱写入不受影响）。如果 DSH 每次供给都重新盖上，请把工作区移出注册表（`workspace-entry`）断根。
+- **详情**：[traps #25](traps.md) · [bugs/16](../bugs/16-workspace-low-label.md) · [catalog](catalog.md)
+
 <a id="hostdup"></a>
 ## `Cannot read properties of undefined (reading 'prepare')`
 

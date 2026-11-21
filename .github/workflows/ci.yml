@@ -161,6 +161,10 @@ jobs:
         shell: bash
         run: node tests/label-pattern.test.mjs
 
+      - name: Workspace integrity label (fake engine + fake home)
+        shell: bash
+        run: node tests/workspace-label.test.mjs
+
       - name: MCP stdio regression (engine-missing paths)
         shell: bash
         run: node tests/mcp.test.mjs

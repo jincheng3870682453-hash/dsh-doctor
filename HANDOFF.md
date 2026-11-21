@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-11-18 · 当前版本 **v0.14.11** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-11-21 · 当前版本 **v0.14.12** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 
@@ -21,8 +21,8 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 
 | 项 | 值 |
 |---|---|
-| 最新 Release | `v0.14.11`（**3 个资产**：exe / unix tar / 环境包） |
-| 插件版本 | `plugin/package.json` → 0.14.11 |
+| 最新 Release | `v0.14.11`（**3 个资产**：exe / unix tar / 环境包）；**v0.14.12 已推送待发版** |
+| 插件版本 | `plugin/package.json` → 0.14.12（npm 尚未发布 0.14.12，等作者弄好 npm 后同步发） |
 | npm | **`dsh-doctor-plugin@0.14.11`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
 | 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
@@ -153,6 +153,7 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 35 | 插件版本与运行时不一致 | 已实现 | `bundle-version-skew`：profile 里 `@deepseek-ai/*` 固定在旧版本 → 兼容性守卫禁用（列表里有、功能没有）。本机实测 subagent-codex/claude-code 仍 rc.1 |
 | 36 | runtime.json 版本过期 | 已实现 | `runtime-metadata-stale`：桌面端更新后 `~/.dsh/dsh-runtimes/.../runtime.json` 不刷新（本机仍写 rc.2）；Electron 宿主里用 app.asar 比对 |
 | 44 | 面板体检 UX（按需扫描 + 缓存 + 超时） | 已实现 | 打开面板只读 ~/.dsh/dsh-doctor/last-scan.json，点「体检」才扫描；worker 超时会终止并提示，不再退回同步扫描把宿主拖死 |
+| 45 | 工作区 Low 完整性标签（桌面之外的 1 号坑） | 已实现 | `workspace-low-label` / `workspace-everyone-deny` 检查 + `workspace-label` 修复（JS + PS 双侧，共用 `fixIntegrityLabelOnPath` 链路）；写探针探不出它，只能读 SDDL。案例 `bugs/16`；官方确认为有意设计（跨会话缓存，dispose 不撤销） |
 | 43 | 改名救急家目录 / 存储损坏检查 | 已实现 | `stale-home-backup`：发现被改名的旧 ~/.dsh（会话/插件/设置在里）；`storage-corrupt`：storages 下 JSON 解析失败。均 JS + PS 双端 |
 | 42 | MCP 入口静态体检 | 已实现 | `mcp-entry-broken`（JS + PS）：解析 profile `cordis.patch.yml` 里的 `dsh-mcp-client` 行，检查入口文件存在性 + `node --check`；任何 MCP server 加载失败都会让 host 直接退出 |
 | 41 | 插件启动崩溃检查 | 已实现 | `plugin-boot-failure`（JS + PS 两套）：扫 crash 日志里的 `ReferenceError/TypeError` + `file:///` 插件路径，直接报出是哪个插件把 DSH 启动搞崩 |

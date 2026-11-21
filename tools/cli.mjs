@@ -25,6 +25,7 @@ function readVersion() {
 
 const FIXES = [
 	['desktop-label', '修桌面图标变白（Windows 专用）'],
+	['workspace-label', '修工作区被盖的 Low 完整性标签（编译产物/安装器报错）'],
 	['workspace-entry', '移除危险工作区（桌面/用户目录/盘根）'],
 	['create-workspace-dir', '补建不存在的工作区目录'],
 	['profile-host-dup', '隔离 profile 里的宿主包副本'],
@@ -33,7 +34,7 @@ const FIXES = [
 ]
 
 /** 一键修复只跑安全的修复项；移除工作区等需要用户确认的不自动做。 */
-const ONE_CLICK_FIXES = ['desktop-label', 'profile-host-dup', 'restore-patch-layer', 'create-workspace-dir', 'compact-credentials']
+const ONE_CLICK_FIXES = ['desktop-label', 'workspace-label', 'profile-host-dup', 'restore-patch-layer', 'create-workspace-dir', 'compact-credentials']
 
 const args = process.argv.slice(2)
 const command = (args[0] || '').toLowerCase()

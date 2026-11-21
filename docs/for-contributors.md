@@ -152,7 +152,7 @@ rescueWeb() → findRuntime()（dsh → npx @next）
 > 这是本项目最容易踩的坑：**EXE 走 PS 检查表，插件走 JS 检查表**，只加一边就会出现"面板能报、EXE 不报"。
 
 1. `plugin/lib/index.js`：写 `checkXxx()` → 加进 `scan()` 的 `builtin` 数组 → 需要修复就加 `FIXES` 条目并给 finding 填 `fixId`；
-2. `src/lib/checks.ps1`：写对应的 `Test-DoctorXxx()` → 加进 `Invoke-DoctorScan` 列表；
+2. `src/lib/checks.ps1`：写对应的 `Test-DoctorXxx()` → 加进 `Invoke-DoctorScan` 列表；`src/lib/fixes.ps1` 加 `Repair-DoctorXxx()` 并在 `Invoke-DoctorFix` 的 switch 里注册；
 3. `docs/catalog.md` 加一行（版本号、可修复与否）；必要时 `docs/traps.md` / `bugs/` 补案例；
 4. `tests/` 加最小可复现用例；`tools/build.ps1` 全量构建，`dsh-doctor.exe scan` 和 `node tools/cli.mjs scan` 都要跑一遍；
 5. CI 会跑多平台 smoke + Rust selftest；tag 后 `build.yml` 出 3 个 Release 资产。

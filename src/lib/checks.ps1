@@ -128,6 +128,49 @@ function Test-DoctorWorkspaceRegistry {
     return $findings.ToArray()
 }
 
+function Test-DoctorWorkspaceLabels {
+    # 工作区（合法项目目录）被打上 Low 完整性标签：桌面之外的 1 号坑。
+    # 写探针探不出它（Medium 进程写 Low 对象是放行的），只能读 SDDL。
+    $findings = New-Object System.Collections.ArrayList
+    $entries = @(Get-DshWorkspaceEntries)
+    if ($entries.Count -eq 0) { return $findings.ToArray() }
+    Write-DoctorStep ('Check workspace integrity labels: ' + $entries.Count)
+
+    foreach ($entry in $entries) {
+        if (-not (Test-Path -LiteralPath $entry)) { continue }
+        $info = Get-PathAclInfo -Path $entry
+        if (-not $info.Exists) { continue }
+        if ($info.Error) {
+            [void]$findings.Add((New-Finding -Id 'workspace-acl-unreadable' -Severity 'Medium' -Path $entry `
+                -Title 'Workspace ACL could not be read - integrity label unknown' `
+                -Detail ('The SDDL of this workspace could not be read by the engine or Get-Acl. If it carries a Low ' +
+                    'label, executables compiled inside sessions inherit it and installers fail. Resolve read access first.') `
+                -Evidence @($info.Error)))
+            continue
+        }
+        if ($info.LowLabel) {
+            [void]$findings.Add((New-Finding -Id 'workspace-low-label' -Severity 'High' -Path $entry `
+                -Title 'Workspace carries a Low integrity label' `
+                -Detail ('The sandbox stamped the "write-down" isolation mechanism onto your own project directory. ' +
+                    'Windows treats Low folders as untrusted: executables built in sessions inherit Low and every ' +
+                    'write they make fails; installers report access denied while unpacking; dragging files out ' +
+                    'triggers a security warning. Writes by the sandbox itself are unaffected (capability ACE stays). ' +
+                    'Fix resets the label to Medium. If DSH re-applies it after every provision, remove the workspace ' +
+                    'entry instead (workspace-entry).') `
+                -Evidence @($info.Sddl) `
+                -Fix 'dsh-doctor fix -Id workspace-label'))
+        }
+        if ($info.EveryoneDeny) {
+            [void]$findings.Add((New-Finding -Id 'workspace-everyone-deny' -Severity 'Medium' -Path $entry `
+                -Title 'Workspace denies Everyone delete-subdirectories-and-files' `
+                -Detail 'Left over from a sandbox grant; DSH never removes it. It blocks normal cleanup inside the project and can break installer temp-file expansion.' `
+                -Evidence @($info.Sddl) `
+                -Fix 'dsh-doctor fix -Id workspace-label'))
+        }
+    }
+    return $findings.ToArray()
+}
+
 function Test-DoctorProfileHostDup {
     $findings = New-Object System.Collections.ArrayList
     $profilesRoot = Join-Path (Get-DshHome) 'profiles'
@@ -974,6 +1017,7 @@ function Invoke-DoctorScan {
     $checks = @(
         'Test-DoctorDesktopIntegrity',
         'Test-DoctorWorkspaceRegistry',
+        'Test-DoctorWorkspaceLabels',
         'Test-DoctorDesktopSessionActivity',
         'Test-DoctorProfileHostDup',
         'Test-DoctorProfileLockedEntries',

@@ -21,6 +21,7 @@
 | [13](13-profile-entry-locked.md) | 插件安装 EPERM：目录被 Codex 沙箱锁死 | 沙箱/DSH 设计 |
 | [14](14-workspace-missing.md) | 工作区目录不存在，会话跑不起来 | DSH 引起 |
 | [15](15-plugin-service-pending.md) | 插件 pending 等待缺失服务，启动失败 | DSH/插件依赖 |
+| [16](16-workspace-low-label.md) | 工作区被打 Low 完整性标签（编译产物/安装器/拖放受影响） | DSH 引起（官方确认为有意设计） |
 
 ## 疑似待验证（排雷线索，不当结论用）
 

@@ -50,6 +50,66 @@ function Repair-DoctorDesktopLabel {
     }
 }
 
+function Repair-DoctorWorkspaceLabel {
+    # 工作区被打上 Low 完整性标签：把注册表里的每个工作区目录改回 Medium，
+    # 并摘掉沙箱留下的 Everyone 删除拒绝项。先备份、改完复检（fail-closed）。
+    $entries = @(Get-DshWorkspaceEntries)
+    if ($entries.Count -eq 0) { Write-DoctorInfo 'No workspace entries found - nothing to do.'; return }
+
+    $repaired = New-Object System.Collections.ArrayList
+    $failed = New-Object System.Collections.ArrayList
+    foreach ($entry in $entries) {
+        if (-not (Test-Path -LiteralPath $entry)) { continue }
+        $before = Get-PathAclInfo -Path $entry
+        if (-not $before.Exists) { continue }
+        if ($before.Error) {
+            [void]$failed.Add($entry + ' (ACL unreadable: ' + $before.Error + ')')
+            continue
+        }
+        if (-not ($before.LowLabel -or $before.EveryoneDeny)) { continue }
+
+        $backupDir = New-DoctorBackupDir -Purpose 'workspace-acl'
+        $backupFile = Join-Path $backupDir (('workspace-' + (Get-DoctorStamp) + '.txt'))
+        $save = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/save', $backupFile)
+        Write-DoctorStep ('ACL backup -> ' + $backupFile + ' (exit ' + $save.ExitCode + ')')
+
+        if ($before.LowLabel) {
+            $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/setintegritylevel', '(OI)(CI)Medium')
+            if ($result.ExitCode -ne 0) {
+                [void]$failed.Add($entry + ' (setintegritylevel: ' + $result.Output + ')')
+                continue
+            }
+            Write-DoctorStep ('Integrity label set to Medium: ' + $entry)
+        }
+        if ($before.EveryoneDeny) {
+            $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/remove:d', '*S-1-1-0')
+            Write-DoctorStep ('Removed Everyone deny ACE (exit ' + $result.ExitCode + '): ' + $entry)
+        }
+
+        $after = Get-PathAclInfo -Path $entry
+        if ($after.Error) {
+            [void]$failed.Add($entry + ' (verification could not read the ACL: ' + $after.Error + ')')
+            continue
+        }
+        if ($after.LowLabel) {
+            [void]$failed.Add($entry + ' (Low label still present after fix)')
+            continue
+        }
+        [void]$repaired.Add($entry)
+        Write-DoctorInfo ('Rollback: icacls "' + (Split-Path -Parent $entry) + '" /restore "' + $backupFile + '"')
+    }
+
+    if ($repaired.Count -eq 0 -and $failed.Count -eq 0) {
+        Write-DoctorInfo 'All workspace labels are clean - nothing to do.'
+        return
+    }
+    foreach ($path in $repaired) { Write-DoctorInfo ('Fixed: ' + $path + ' (capability ACE kept, sandbox writes unaffected)') }
+    foreach ($item in $failed) { Write-DoctorWarn ('Failed: ' + $item) }
+    if ($repaired.Count -gt 0) {
+        Write-DoctorInfo 'If DSH re-applies the label after every provision, remove the workspace entry instead (fix -Id workspace-entry).'
+    }
+}
+
 function Repair-DoctorProfileHostDup {
     param([switch]$Yes)
 
@@ -244,6 +304,8 @@ function Invoke-DoctorFixAll {
     $map = @{
         'desktop-low-label' = 'desktop-label'
         'desktop-everyone-deny' = 'desktop-label'
+        'workspace-low-label' = 'workspace-label'
+        'workspace-everyone-deny' = 'workspace-label'
         'profile-host-duplicate' = 'profile-host-dup'
         'patch-layer-missing' = 'restore-patch-layer'
         'workspace-missing' = 'workspace-create'
@@ -306,8 +368,11 @@ function Invoke-DoctorFix {
         'workspace-create' {
             Repair-DoctorMissingWorkspaces
         }
+        'workspace-label' {
+            Repair-DoctorWorkspaceLabel
+        }
         default {
-            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, profile-host-dup, workspace-entry, workspace-create, restore-patch-layer, clear-cookies.')
+            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, workspace-label, profile-host-dup, workspace-entry, workspace-create, restore-patch-layer, clear-cookies.')
         }
     }
 }
