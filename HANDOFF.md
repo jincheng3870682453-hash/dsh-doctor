@@ -22,8 +22,8 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 | 项 | 值 |
 |---|---|
 | 最新 Release | `v0.14.13`（2026-11-22 发布，3 个资产：exe / unix tar / 环境包） |
-| 插件版本 | `plugin/package.json` → 0.14.13（npm **尚未发布 0.14.13**：0.14.12 被 npm 冻结期跳过；本机未登录 npm，需在持久终端补发，命令见 §6） |
-| npm | **`dsh-doctor-plugin@0.14.11`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA；0.14.13 待补发） |
+| 插件版本 | `plugin/package.json` → 0.14.13（npm **已发布 0.14.13**；0.14.12 因发布账号冻结期被跳过，npm 用户从 0.14.11 直接升到 0.14.13） |
+| npm | **`dsh-doctor-plugin@0.14.13`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA；校验：`shasum` `828b529ab066e3a037c2b6844eb241ce6a55d006`，包内引擎与发行 EXE 同源） |
 | 分支 | `main`（本地与远端内容一致；远端历史由 API 推送重写为单提交，本地提交前需 `git reset --soft origin/main` 对齐） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
 | 桌面端运行时 | 本机 `E:\dsh`，DSH 0.2.1-rc.2，Electron 44.x |
@@ -265,7 +265,7 @@ $sha = (Invoke-RestMethod -Uri 'https://api.github.com/repos/jincheng3870682453-
 
 3. 打 tag 后 build.yml 自动建 Release（3 个资产）；确认 `gh release view vX.Y.Z` 齐了再发 npm。
 4. npm 冻结期处理（2026-11-21 实测）：发布账号 `jinchengszj123` 被安全自动化冻结 72 小时，期间 GitHub Release 先行，解冻后补发 npm（0.14.12 即因此跳过，0.14.13 补上）。
-5. npm 补发（2026-11-26 状态：本机 `npm whoami` → ENEEDAUTH，必须人工登录）：在**持久终端**里 `cd plugin`，先 `npm login --auth-type=web`（浏览器里按安全密钥），再 `npm publish --access public --auth-type=web`；发布后用 `npm view dsh-doctor-plugin version` 核对。
+5. npm 补发（2026-11-26 已完成 0.14.13，命令留作下次备用）：非 TTY 环境下 `npm publish` 会因安全密钥 2FA 报 `EOTP` 并把认证 URL 打码，必须在**有控制台的窗口**里跑：`cd plugin` → `npm login --auth-type=web`（浏览器按安全密钥）→ `npm publish --access public --auth-type=web`，看到 `+ dsh-doctor-plugin@x.y.z` 后等 1–2 分钟（npm 异步扫描期 `latest` 可能还显示旧版），再 `npm view dsh-doctor-plugin version` 核对。
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## v0.14.13 — 2026-11-22
 
-> npm 上从 `0.14.11` 直接跳到本版：`0.14.12` 因发布账号被 npm 安全自动化冻结而未发 npm（GitHub Release 已先行）。npm 用户实际获得的是 v0.14.12 + v0.14.13 两版内容。
+> npm 上从 `0.14.11` 直接跳到本版：`0.14.12` 因发布账号被 npm 安全自动化冻结而未发 npm（GitHub Release 已先行）。0.14.13 已发布到 npm，用户拿到的是 v0.14.12 + v0.14.13 两版内容。
 
 - **修复 EXE 引擎接线**：`src/lib/common.ps1` 增加顶层 `param(-EnginePath)` 并设置 `DSH_DOCTOR_SYS`，与 `tools/build.ps1` 的 C# 启动器约定一致；引擎失败回退 `Get-Acl` 时不再使用 PS 无法解析的 C 风格注释。拼接 EXE 行为由 `tests/rescue-integration.ps1` 全程守护。
 - **修复契约偏差**：EXE 引擎接线（`EnginePath`）、ACL 备份失败即停（fail-closed）、失败回滚复检原 SDDL、JS `fixIntegrityLabelOnPath` 单路径互斥（引擎/PowerShell 二选一）。
