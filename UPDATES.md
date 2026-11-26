@@ -30,7 +30,7 @@
 - **修一个发行包漏文件**：环境包与 Unix tar 之前漏装检查包正则 worker，导致社区检查包的 `file-regex` 在发行版里静默失效（不报错、就是永远不匹配）。现在 worker 全部随包，验收会真跑一次。
 - **Rust 引擎更守规矩**：退出码分档（0 成功 / 1 原语失败 / 2 参数解析失败），数字参数严格校验范围；`snapshot-restore` 先全量预检再逐条回滚，失败如实报告「逐条处理、非全事务」。
 - **社区检查包的边界**：`file-regex` 在专用 worker 里最多跑 1 秒、超时即杀；加载时校验协议版本、字段长度、修复白名单与绝对路径，拒绝反向引用、后行断言与嵌套量词。
-- **EXE / PowerShell 侧**：补上凭据版本、patch 层、PATH 死路径检查；报告与 JSON 输出全部脱敏；未知命令返回非零；`workspace-create` 保留为兼容别名。
+- **EXE / PowerShell 侧**：补上凭据版本、patch 层、PATH 死路径检查；报告与 JSON 输出全部脱敏；未知命令返回非零；`workspace-create` 保留为兼容别名。体检不会再被「内部探路失败」误判成失败（比如 PATH 里没有 `dsh`），退出码只反映体检本身的结果。
 - **npm 说明**：`0.14.12` 因发布账号被 npm 安全自动化冻结未发 npm（GitHub Release 已先行），本版一并补上——npm 用户拿到的其实是 v0.14.12 + v0.14.13 两版内容。
 
 [下载](https://github.com/jincheng3870682453-hash/dsh-doctor/releases/tag/v0.14.13) · [npm](https://www.npmjs.com/package/dsh-doctor-plugin)

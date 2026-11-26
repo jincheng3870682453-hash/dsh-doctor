@@ -101,13 +101,24 @@ function Invoke-DoctorProcess {
     )
     $output = ''
     $exitCode = 0
+    # 原生命令会把 $LASTEXITCODE 泄漏给调用方：EXE 用 powershell.exe 跑内嵌脚本、CI 用 -Command 跑
+    # 冒烟脚本时都会据此决定退出码。"探路失败"（如 where.exe 找不到 dsh）不能让整次体检看起来失败。
+    # 所以这里接管原生调用，读完退出码后把调用方原来的值还回去。
+    $previousLastExitCode = 0
+    $hadLastExitCode = $null -ne (Get-Variable -Name 'LASTEXITCODE' -Scope Global -ErrorAction SilentlyContinue)
+    if ($hadLastExitCode) { $previousLastExitCode = [int]$global:LASTEXITCODE }
     try {
-        $output = (& $FilePath @Arguments 2>&1 | Out-String).Trim()
-        $hasLastExitCode = $null -ne (Get-Variable -Name 'LASTEXITCODE' -ErrorAction SilentlyContinue)
-        if ($hasLastExitCode) { $exitCode = [int]$LASTEXITCODE }
-    } catch {
-        $output = $_.Exception.Message
-        $exitCode = -1
+        try {
+            $output = (& $FilePath @Arguments 2>&1 | Out-String).Trim()
+            if ($null -ne (Get-Variable -Name 'LASTEXITCODE' -Scope Global -ErrorAction SilentlyContinue)) {
+                $exitCode = [int]$global:LASTEXITCODE
+            }
+        } catch {
+            $output = $_.Exception.Message
+            $exitCode = -1
+        }
+    } finally {
+        $global:LASTEXITCODE = $previousLastExitCode
     }
     [pscustomobject]@{
         ExitCode = $exitCode
@@ -165,7 +176,8 @@ function Get-PathAclInfo {
         $engine = $env:DSH_DOCTOR_SYS
         if (-not [string]::IsNullOrWhiteSpace($engine) -and (Test-Path -LiteralPath $engine)) {
             try {
-                $raw = (& $engine acl-read --path $Path 2>$null | Out-String)
+                $probe = Invoke-DoctorProcess -FilePath $engine -Arguments @('acl-read', '--path', $Path)
+                $raw = [string]$probe.Output
                 $parsed = $raw | ConvertFrom-Json
                 if ($parsed.ok -eq $true -and $null -ne $parsed.data -and -not [string]::IsNullOrWhiteSpace([string]$parsed.data.sddl)) {
                     $sddl = [string]$parsed.data.sddl

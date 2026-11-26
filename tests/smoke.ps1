@@ -34,4 +34,11 @@ if ($json -notmatch '"findings"') { throw 'JSON export missing findings key' }
 $parsed = $json | ConvertFrom-Json
 if ($null -eq $parsed) { throw 'JSON export is not parseable' }
 
+# 体检内部的"探路失败"（例如 where.exe 找不到 dsh）不能改调用方的退出码：
+# EXE 用 powershell 跑内嵌脚本、CI 用 -Command 跑本脚本，都会把 $LASTEXITCODE 当进程退出码。
+$leaked = Get-Variable -Name 'LASTEXITCODE' -ErrorAction SilentlyContinue
+if ($null -ne $leaked -and [int]$leaked.Value -ne 0) {
+    throw ('native probe leaked LASTEXITCODE=' + [string]$leaked.Value + ' into the scan; the EXE / CI would exit nonzero')
+}
+
 Write-Host ('smoke OK - ' + $findings.Count + ' finding(s)') -ForegroundColor Green

@@ -662,9 +662,9 @@ function Test-DoctorMcpEntries {
                     continue
                 }
                 if ($null -ne $node) {
-                    $check = & $node --check $entry 2>&1
-                    if ($LASTEXITCODE -ne 0) {
-                        $reason = (@($check) | Where-Object { $_.Trim().Length -gt 0 } | Select-Object -Last 2) -join ' '
+                    $check = Invoke-DoctorProcess -FilePath $node -Arguments @('--check', $entry)
+                    if ($check.ExitCode -ne 0) {
+                        $reason = (@($check.Output -split "`r?`n") | Where-Object { $_.Trim().Length -gt 0 } | Select-Object -Last 2) -join ' '
                         [void]$findings.Add((New-Finding -Id 'mcp-entry-broken' -Severity 'High' -Path $entry `
                             -Title ('MCP server entry cannot be loaded: ' + [System.IO.Path]::GetFileName($entry)) `
                             -Detail ('node --check failed: ' + $reason + '. Fix the file or remove its row from cordis.patch.yml.')))
