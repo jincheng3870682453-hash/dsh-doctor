@@ -2,6 +2,7 @@
 
 > 一张表看完：医生能查什么、能修什么、改之前备份到哪、改完怎么验证。
 > 每一条都对应面板里的一个问题卡，或命令行里的一个 `-Id`。
+> 本表主要描述 JS 插件 / Node CLI；EXE 和原生 Rust 的覆盖差异见 [compatibility.md](compatibility.md)。
 
 ## 一、检查项（只读）
 
@@ -40,12 +41,17 @@
 
 | # | 修复 id | 改什么 | 备份位置 | 验证方式 | 生效 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `desktop-label` | 桌面完整性标签 `Low → Medium`；摘掉 `Everyone` 删除拒绝项 | `~/.dsh/dsh-doctor-backups/desktop-acl-<ts>.txt`（`icacls /restore` 可还原） | 重读 SDDL，确认不再含 `S:(ML;;…;;;LW)` | 立即（图标自动恢复） |
+| 1 | `desktop-label` | 桌面完整性标签 `Low → Medium`；摘掉 `Everyone` 删除拒绝项 | `~/.dsh/dsh-doctor-backups/integrity-acl-<ts>.json`；无引擎时 `.txt` | 重读 SDDL，Low 与 Everyone 删除拒绝项都不存在；失败尝试恢复并报告结果 | 立即（图标自动恢复） |
 | 2 | `workspace-entry` | 从工作区注册表移除桌面类危险路径 | 优先走 DSH `workspaceRegistry.delete()`；文件兜底时备份 `workspace.json.bak-<ts>` | 重新列出工作区，确认危险路径已消失 | 重启桌面端 |
-| 3 | `profile-host-dup` | 把 profile 里的 `@deepseek-ai` 宿主包副本改名隔离 | 原名保留，加 `.stale-<ts>` 后缀即可改回 | 重新扫描，确认不再命中 | 重启桌面端 |
-| 4 | `restore-patch-layer` | 从最近的 `cordis.patch.yml.bak-*` 恢复 patch 层 | 当前空文件另存 `.empty-<ts>` | 重读文件大小 > 0 | 重启桌面端 |
-| 5 | `workspace-acl` | 给当前账号补工作区完全控制 | `~/.dsh/dsh-doctor-backups/workspace-acl-<ts>.txt`（`icacls /restore`） | 重新写测试文件成功 | 立即 |
-| 6 | `workspace-label` | 把注册工作区的完整性标签 `Low → Medium`；摘掉 `Everyone` 删除拒绝项 | `~/.dsh/dsh-doctor-backups/integrity-acl-<ts>.txt`（`icacls /restore`） | 重读 SDDL，确认不再含 `S:(ML;;…;;;LW)`（读不到 = 失败） | 立即（沙箱写入不受影响：能力 ACE 保留） |
+| 3 | `profile-host-dup` | 把 profile 里的 `@deepseek-ai` 宿主包副本改名隔离 | `~/.dsh/dsh-doctor-backups/hostpkgs-<ts>/<来源编码>/<包名>`；多 profile 不冲突 | 重新扫描，确认不再命中；失败按相反顺序移回 | 重启桌面端 |
+| 4 | `restore-patch-layer` | 从最近的 `cordis.patch.yml.bak-*` 恢复 patch 层 | 当前内容保存到 `dsh-doctor-backups/patch-*` | 与所选备份逐字比对；失败恢复原状 | 重启桌面端 |
+| 5 | `workspace-acl` | 给当前账号补工作区完全控制 | `workspace-acl-<ts>.json`；无引擎时 `.txt` | 重新写测试文件成功；失败执行恢复并提示复检 | 立即 |
+| 6 | `workspace-label` | 把注册工作区的完整性标签 `Low → Medium`；摘掉 `Everyone` 删除拒绝项 | 与桌面修复相同，每个工作区有独立备份 | 重读 SDDL，Low 与拒绝项均不存在（读不到 = 失败） | 立即（能力 ACE 保留） |
+| 7 | `create-workspace-dir` | 按注册表补建缺失的空工作区目录 | 无原目录可备份 | 检查目录确实存在；不会找回项目内容 | 立即可重新指向/放回项目 |
+| 8 | `compact-credentials` | 每个登录记录 key 仅保留最新块 | `credentials-<ts>.yaml` | 回读条数与 key 唯一性；失败恢复 | 自动重载或重启 |
+| 9 | `permission-too-broad` | 给旧会话追加安全权限事件并更新投影缓存 | `session-perm-<ts>/` 下保存日志与缓存 | 解压回读日志、回读缓存；缓存失败恢复日志 | 重开会话；当前会话跳过 |
+| 10 | `reap-zombies` | 复核命令行后回收失效 DSH web 进程 | **不可回滚** | 只返回实际停止的 PID；不是文件事务 | 立即 |
+| 11 | `refresh-shell` | 通知 Explorer 重新获取图标 | **不可回滚** | 只证明系统通知已发出，不证明所有图标已重绘 | 立即 |
 
 ## 三、只报告、不自动修（以及为什么）
 
@@ -71,5 +77,5 @@
 
 ## 五、社区扩展
 
-上面第 1、2 组里的检测原语和修复 id 都可以被社区检查包引用，写法见 [protocol.md](protocol.md)。
+上面声明的检测原语以及协议白名单中的 6 个修复 id 可以被社区检查包引用；并非所有内置修复都开放给检查包。写法见 [protocol.md](protocol.md)。
 新增检查不需要改引擎；新增**修复动作**需要走代码评审（安全边界）。

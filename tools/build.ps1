@@ -1,47 +1,113 @@
-﻿# 构建全部发行产物：Windows 急救 EXE + 跨平台 Node CLI + Linux/macOS 外壳 + Rust 原语引擎。
-# 输出到 dist/release/。
+﻿# 构建发行产物：Windows 急救 EXE、Unix 包、插件 zip 和 Windows 环境包。
+# 输出到 dist/release/。GitHub Release 仍只上传 EXE / Unix 包 / 环境包三个用户资产。
+# SkipDoctorSys 复用 doctorsys job 的引擎；OnlyWindows/OnlyEnvPack 用于 CI 分工。
+# NodeExe/NodeZip 指定环境包使用的便携 Node 20；正常构建必须验收。
 param(
-    # CI 的 doctorsys job 已单独构建 Rust 引擎时使用，避免重复构建/产物不一致。
-    [switch]$SkipDoctorSys
+    [switch]$SkipDoctorSys,
+    [switch]$OnlyEnvPack,
+    [switch]$OnlyWindows,
+    [string]$NodeExe = '',
+    [string]$NodeZip = '',
+    [switch]$SkipVerify
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $release = Join-Path $root 'dist\release'
 New-Item -ItemType Directory -Path $release -Force | Out-Null
 $utf8NoBom = New-Object Text.UTF8Encoding($false)
+$pluginVersion = (Get-Content -LiteralPath (Join-Path $root 'plugin\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+if ([string]::IsNullOrWhiteSpace([string]$pluginVersion)) { throw 'plugin/package.json has no version' }
 
-# ── 0) Rust 原语引擎 doctor-sys.exe（设计文档 §9；CI 的 doctorsys job 单独构建）──
-#    构建时传 -SkipDoctorSys 可跳过（CI 的 windows job 就是这么用的）。
-$cargo = Get-Command cargo -ErrorAction SilentlyContinue
-if ($SkipDoctorSys) {
-    Write-Host 'skip doctor-sys.exe (-SkipDoctorSys)'
-} elseif ($cargo) {
-    & cargo build --release --manifest-path (Join-Path $root 'doctor-sys\Cargo.toml')
-    if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
-    Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'doctor-sys.exe') -Force
-    Write-Host ('built ' + (Join-Path $release 'doctor-sys.exe') + ' (' + [math]::Round((Get-Item (Join-Path $release 'doctor-sys.exe')).Length / 1KB, 1) + ' KB)')
-    # 纯 Rust 原生 CLI（scan/fix）：同一份二进制，换个名字给"不想要 PowerShell"的用户。
-    Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $release 'dsh-doctor-native.exe') -Force
-    Write-Host ('built ' + (Join-Path $release 'dsh-doctor-native.exe') + ' (' + [math]::Round((Get-Item (Join-Path $release 'dsh-doctor-native.exe')).Length / 1KB, 1) + ' KB)')
-    # 插件侧也要能读 SACL（Low 完整性标签）：PowerShell 的 Get-Acl 读不到，必须用引擎。
-    $pluginBin = Join-Path $root 'plugin\bin'
-    New-Item -ItemType Directory -Path $pluginBin -Force | Out-Null
-    Copy-Item (Join-Path $root 'doctor-sys\target\release\doctor-sys.exe') (Join-Path $pluginBin 'doctor-sys.exe') -Force
-    Write-Host ('staged plugin engine: ' + (Join-Path $pluginBin 'doctor-sys.exe'))
-} else {
-    Write-Host 'cargo not found - skip doctor-sys.exe (CI builds it separately)'
+function Assert-WindowsX64Node([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "node.exe not found: $Path" }
+    $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path).Path)
+    if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Node is not a Windows executable: $Path" }
+    $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($pe -lt 0 -or $pe + 6 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $pe) -ne 0x00004550) {
+        throw "Invalid PE header in Node executable: $Path"
+    }
+    if ([BitConverter]::ToUInt16($bytes, $pe + 4) -ne 0x8664) { throw "Environment pack requires Windows x64 Node: $Path" }
+    $nodeVersion = (& $Path --version | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v20\.') { throw "Environment pack requires Node 20, got: $nodeVersion" }
+    return (Resolve-Path -LiteralPath $Path).Path
 }
 
-# ── 1) Windows：自包含急救 EXE（C# 启动器内嵌 PowerShell 逻辑）────────────────
+function Build-EnvironmentPack {
+    $nodeSource = $NodeExe
+    $nodeStage = ''
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($NodeZip)) {
+            if (-not (Test-Path -LiteralPath $NodeZip -PathType Leaf)) { throw "Node zip not found: $NodeZip" }
+            $nodeStage = Join-Path $release ('.node-' + [guid]::NewGuid().ToString('N'))
+            Expand-Archive -LiteralPath $NodeZip -DestinationPath $nodeStage -Force
+            $found = @(Get-ChildItem -LiteralPath $nodeStage -Recurse -Filter node.exe -File)
+            if ($found.Count -ne 1) { throw "Node zip must contain exactly one node.exe, found $($found.Count)" }
+            $nodeSource = $found[0].FullName
+        }
+        if ([string]::IsNullOrWhiteSpace($nodeSource)) {
+            $command = Get-Command node.exe -ErrorAction SilentlyContinue
+            if ($null -eq $command) { throw 'Windows x64 Node 20 is required for the environment pack (-NodeExe or -NodeZip)' }
+            $nodeSource = $command.Source
+        }
+        $nodeSource = Assert-WindowsX64Node $nodeSource
+        $pack = Join-Path $release '.envpack'
+        if (Test-Path -LiteralPath $pack) { Remove-Item -LiteralPath $pack -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Join-Path $pack 'plugin\lib'), (Join-Path $pack 'plugin\bin') | Out-Null
+        Copy-Item -LiteralPath $nodeSource (Join-Path $pack 'node.exe') -Force
+        $cli = [IO.File]::ReadAllText((Join-Path $root 'tools\cli.mjs'), [Text.Encoding]::UTF8)
+        $cli = $cli.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.mjs'")
+        [IO.File]::WriteAllText((Join-Path $pack 'dsh-doctor.mjs'), $cli, $utf8NoBom)
+        Copy-Item -LiteralPath (Join-Path $root 'plugin\lib\index.js') (Join-Path $pack 'plugin\lib\index.mjs') -Force
+        # worker 全部随包：漏一个就是"检查包在发行版里静默失效"。
+        Get-ChildItem -LiteralPath (Join-Path $root 'plugin\lib') -Filter '*.mjs' -File | Copy-Item -Destination (Join-Path $pack 'plugin\lib') -Force
+        Copy-Item -LiteralPath (Join-Path $root 'plugin\package.json') (Join-Path $pack 'plugin\package.json') -Force
+        Copy-Item -LiteralPath (Join-Path $root 'plugin\bin\doctor-sys.exe') (Join-Path $pack 'plugin\bin\doctor-sys.exe') -Force
+        # .cmd 不能带 BOM（cmd.exe 会把 BOM 当命令的一部分）。
+        $launcher = "@echo off`r`nchcp 65001 >nul`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n`"%~dp0node.exe`" `"%~dp0dsh-doctor.mjs`" %*`r`necho.`r`npause`r`n"
+        [IO.File]::WriteAllText((Join-Path $pack 'start.cmd'), $launcher, $utf8NoBom)
+        $readme = "DSH 私人医生 · Windows 环境包`r`n================================`r`n`r`n这个包自带 node.exe，不需要另外安装 Node，也不需要 DSH 能启动。`r`n`r`n用法：`r`n  1. 解压到任意目录（不要放在桌面，避免图标被刷新）；`r`n  2. 双击 start.cmd；`r`n  3. 选 1 一键修复，或按菜单提示操作；也可以直接运行 node.exe dsh-doctor.mjs fix-all`r`n`r`n命令行：`r`n  node.exe dsh-doctor.mjs scan`r`n  node.exe dsh-doctor.mjs fix workspace-entry`r`n  node.exe dsh-doctor.mjs report`r`n`r`n全部在本机运行，不上传任何数据。`r`n"
+        [IO.File]::WriteAllText((Join-Path $pack 'README.txt'), $readme, $utf8NoBom)
+        $zip = Join-Path $release 'dsh-doctor-env-win-x64.zip'
+        Compress-Archive -Path (Join-Path $pack '*') -DestinationPath $zip -Force
+        Remove-Item -LiteralPath $pack -Recurse -Force
+        Write-Host "built $zip"
+    } finally {
+        if (-not [string]::IsNullOrWhiteSpace($nodeStage) -and (Test-Path -LiteralPath $nodeStage)) {
+            Remove-Item -LiteralPath $nodeStage -Recurse -Force
+        }
+    }
+}
+
+if ($OnlyEnvPack) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root 'plugin\bin\doctor-sys.exe') -PathType Leaf)) { throw 'Build or stage plugin/bin/doctor-sys.exe before building the environment pack' }
+    Build-EnvironmentPack
+    if (-not $SkipVerify) { & node (Join-Path $PSScriptRoot 'verify-release.mjs') --root $root --asset env --expected-version $pluginVersion --engine-source (Join-Path $root 'plugin\bin\doctor-sys.exe'); if ($LASTEXITCODE -ne 0) { throw 'environment pack verification failed' } }
+    return
+}
+
+# ── 0) Rust 原语引擎：唯一来源是 doctor-sys/target/release/doctor-sys.exe ──
+$engineSource = Join-Path $root 'doctor-sys\target\release\doctor-sys.exe'
+if ($SkipDoctorSys) {
+    if (-not (Test-Path -LiteralPath $engineSource -PathType Leaf)) { throw '-SkipDoctorSys requires an existing doctor-sys/target/release/doctor-sys.exe' }
+    if ((Get-Item -LiteralPath $engineSource).Length -eq 0) { throw 'doctor-sys.exe is empty' }
+    Write-Host 'using prebuilt doctor-sys.exe (-SkipDoctorSys)'
+} else {
+    $cargo = Get-Command cargo -ErrorAction SilentlyContinue
+    if ($null -eq $cargo) { throw 'cargo not found; install Rust or use CI doctorsys artifact with -SkipDoctorSys' }
+    & cargo build --release --manifest-path (Join-Path $root 'doctor-sys\Cargo.toml')
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
+}
+Copy-Item -LiteralPath $engineSource (Join-Path $release 'doctor-sys.exe') -Force
+Copy-Item -LiteralPath $engineSource (Join-Path $release 'dsh-doctor-native.exe') -Force
+$pluginBin = Join-Path $root 'plugin\bin'
+New-Item -ItemType Directory -Path $pluginBin -Force | Out-Null
+Copy-Item -LiteralPath $engineSource (Join-Path $pluginBin 'doctor-sys.exe') -Force
+Write-Host 'staged doctor-sys.exe, native CLI and plugin/bin/doctor-sys.exe'
+
+# ── 1) Windows：自包含急救 EXE（C# 启动器内嵌 PowerShell 逻辑与同一引擎）──
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { throw "csc.exe not found: $csc" }
-$parts = @(
-    'src\lib\common.ps1',
-    'src\lib\checks.ps1',
-    'src\lib\fixes.ps1',
-    'src\lib\report.ps1',
-    'tools\rescue-main.ps1'
-)
+$parts = @('src\lib\common.ps1', 'src\lib\checks.ps1', 'src\lib\fixes.ps1', 'src\lib\report.ps1', 'tools\rescue-main.ps1')
 $builder = New-Object System.Text.StringBuilder
 foreach ($part in $parts) {
     $full = Join-Path $root $part
@@ -49,9 +115,10 @@ foreach ($part in $parts) {
     [void]$builder.AppendLine((Get-Content -LiteralPath $full -Raw -Encoding UTF8))
     [void]$builder.AppendLine('')
 }
-# 把 PowerShell 侧的版本常量替换成真实版本（源码里是 0.1.0 占位）。
-$pluginVersion = (Get-Content -LiteralPath (Join-Path $root 'plugin\package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $scriptText = $builder.ToString().Replace("`$script:DshDoctorVersion = '0.1.0'", "`$script:DshDoctorVersion = '$pluginVersion'")
+$versionDispatch = "if (`$env:DSH_DOCTOR_EXE_ARGS -eq 'version') {`r`n    Get-DoctorVersion`r`n} elseif (`$env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {"
+if (-not $scriptText.Contains("if (`$env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {")) { throw 'rescue entry point has no scan dispatch' }
+$scriptText = $scriptText.Replace("if (`$env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {", $versionDispatch)
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($scriptText))
 
 $launcher = @'
@@ -95,11 +162,7 @@ class DshDoctorLauncher
                 Console.Error.WriteLine("dsh-doctor: no writable directory for the embedded script");
                 return 3;
             }
-            var info = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false
-            };
+            var info = new ProcessStartInfo { FileName = "powershell.exe", UseShellExecute = false };
             if (!string.IsNullOrEmpty(SysBase64))
             {
                 try
@@ -134,9 +197,7 @@ class DshDoctorLauncher
     }
 }
 '@
-$engineSource = Join-Path $root 'doctor-sys\target\release\doctor-sys.exe'
-$sysB64 = ''
-if (Test-Path -LiteralPath $engineSource) { $sysB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($engineSource)) }
+$sysB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($engineSource))
 $source = $launcher.Replace('__SCRIPT_B64__', $encoded).Replace('__SYS_B64__', $sysB64)
 $csFile = Join-Path $release 'dsh-doctor-launcher.cs'
 $exeFile = Join-Path $release 'dsh-doctor.exe'
@@ -144,36 +205,37 @@ Set-Content -LiteralPath $csFile -Value $source -Encoding UTF8
 & $csc /nologo /target:exe /optimize+ "/out:$exeFile" $csFile
 if ($LASTEXITCODE -ne 0) { throw "csc failed with exit code $LASTEXITCODE" }
 Remove-Item -LiteralPath $csFile -Force
-Write-Host ('built ' + $exeFile + ' (' + [math]::Round((Get-Item $exeFile).Length / 1KB, 1) + ' KB)')
+Write-Host "built $exeFile"
 
-# ── 2) 跨平台 Node CLI（Linux / macOS / 任何有 Node 的地方）────────────────────
+if ($OnlyWindows) {
+    if (-not $SkipVerify) { & node (Join-Path $PSScriptRoot 'verify-release.mjs') --root $root --asset exe --expected-version $pluginVersion --engine-source $engineSource; if ($LASTEXITCODE -ne 0) { throw 'Windows EXE verification failed' } }
+    Write-Host 'Windows EXE and native engine built and verified'
+    return
+}
+
+# ── 2) Unix 发行布局（与 tools/package-unix.sh 一致）──
 $cliSource = [IO.File]::ReadAllText((Join-Path $root 'tools\cli.mjs'), [Text.Encoding]::UTF8)
 $cliRelease = $cliSource.Replace("'../plugin/lib/index.js'", "'./plugin/lib/index.mjs'")
 [IO.File]::WriteAllText((Join-Path $release 'dsh-doctor.mjs'), $cliRelease, $utf8NoBom)
 $pluginDir = Join-Path $release 'plugin\lib'
 New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
-[IO.File]::WriteAllText((Join-Path $pluginDir 'index.mjs'),
-    [IO.File]::ReadAllText((Join-Path $root 'plugin\lib\index.js'), [Text.Encoding]::UTF8), $utf8NoBom)
-Copy-Item (Join-Path $root 'plugin\package.json') (Join-Path $release 'plugin\package.json') -Force
-Write-Host 'built dsh-doctor.mjs + plugin/lib/index.mjs'
-
-# ── 3) Linux / macOS 外壳（LF 换行，源码在 tools/launcher/）──────────────────
+[IO.File]::WriteAllText((Join-Path $pluginDir 'index.mjs'), [IO.File]::ReadAllText((Join-Path $root 'plugin\lib\index.js'), [Text.Encoding]::UTF8), $utf8NoBom)
+Get-ChildItem -LiteralPath (Join-Path $root 'plugin\lib') -Filter '*.mjs' -File | Copy-Item -Destination $pluginDir -Force
+Copy-Item -LiteralPath (Join-Path $root 'plugin\package.json') (Join-Path $release 'plugin\package.json') -Force
 foreach ($launcherFile in @('dsh-doctor.sh', 'dsh-doctor.command')) {
-    $source = Join-Path $root ('tools\launcher\' + $launcherFile)
-    $text = [IO.File]::ReadAllText($source, [Text.Encoding]::UTF8) -replace "`r`n", "`n"
+    $text = [IO.File]::ReadAllText((Join-Path $root ('tools\launcher\' + $launcherFile)), [Text.Encoding]::UTF8) -replace "`r`n", "`n"
     [IO.File]::WriteAllText((Join-Path $release $launcherFile), $text, $utf8NoBom)
 }
-Write-Host 'built dsh-doctor.sh + dsh-doctor.command'
 
-# ── 4) 打 Unix 包（与 CI 用同一份布局；CI 里跑 tools/package-unix.sh）──────────
-$stage = Join-Path $env:TEMP ('dsh-doctor-unix-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+# ── 3) Unix tar（内容与 tools/package-unix.sh 相同）──
+$stage = Join-Path $release ('.unix-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path (Join-Path $stage 'plugin\lib') -Force | Out-Null
-Copy-Item (Join-Path $release 'dsh-doctor.mjs') $stage -Force
-Copy-Item (Join-Path $release 'dsh-doctor.sh') $stage -Force
-Copy-Item (Join-Path $release 'dsh-doctor.command') $stage -Force
-Copy-Item (Join-Path $pluginDir 'index.mjs') (Join-Path $stage 'plugin\lib\index.mjs') -Force
-Copy-Item (Join-Path $release 'plugin\package.json') (Join-Path $stage 'plugin\package.json') -Force
-# Git Bash 的 GNU tar 会把 "D:\..." 当远程主机，优先用 Windows 自带 bsdtar
+Copy-Item -LiteralPath (Join-Path $release 'dsh-doctor.mjs') $stage -Force
+Copy-Item -LiteralPath (Join-Path $release 'dsh-doctor.sh') $stage -Force
+Copy-Item -LiteralPath (Join-Path $release 'dsh-doctor.command') $stage -Force
+Copy-Item -LiteralPath (Join-Path $pluginDir 'index.mjs') (Join-Path $stage 'plugin\lib\index.mjs') -Force
+Get-ChildItem -LiteralPath (Join-Path $root 'plugin\lib') -Filter '*.mjs' -File | Copy-Item -Destination (Join-Path $stage 'plugin\lib') -Force
+Copy-Item -LiteralPath (Join-Path $release 'plugin\package.json') (Join-Path $stage 'plugin\package.json') -Force
 $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
 if (-not (Test-Path $tarExe)) { $tarExe = 'tar' }
 & $tarExe -czf (Join-Path $release 'dsh-doctor-unix.tar.gz') -C $stage '.'
@@ -181,18 +243,26 @@ if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Remove-Item -LiteralPath $stage -Recurse -Force
 Write-Host 'built dsh-doctor-unix.tar.gz'
 
-# ── 5) 插件包：给"不想用 link 安装"的用户，解压后 install_bundle 指向解压目录 ──
+# ── 4) 插件包：包含真实 doctor-sys，不使用仓库外的引擎替代 ──
 $pluginZip = Join-Path $release 'dsh-doctor-plugin.zip'
-$pluginStage = Join-Path $env:TEMP ('dsh-doctor-plugin-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$pluginStage = Join-Path $release ('.plugin-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $pluginStage -Force | Out-Null
-Copy-Item (Join-Path $root 'plugin\*') $pluginStage -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $root 'plugin') -Force | Where-Object { $_.Name -ne 'node_modules' } | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $pluginStage -Recurse -Force
+}
 Compress-Archive -Path (Join-Path $pluginStage '*') -DestinationPath $pluginZip -Force
 Remove-Item -LiteralPath $pluginStage -Recurse -Force
 Write-Host 'built dsh-doctor-plugin.zip'
 
+Build-EnvironmentPack
+
+if (-not $SkipVerify) {
+    & node (Join-Path $PSScriptRoot 'verify-release.mjs') --root $root --asset all --expected-version $pluginVersion --engine-source $engineSource
+    if ($LASTEXITCODE -ne 0) { throw 'release verification failed' }
+}
+
 Write-Host ''
 Write-Host 'dist/release/'
-Get-ChildItem -Recurse -File $release | ForEach-Object {
-    $relative = $_.FullName.Substring($release.Length + 1)
-    Write-Host ('  ' + $relative.PadRight(34) + [math]::Round($_.Length / 1KB, 1) + ' KB')
+Get-ChildItem -File $release | ForEach-Object {
+    Write-Host ('  ' + $_.Name.PadRight(34) + [math]::Round($_.Length / 1KB, 1) + ' KB')
 }

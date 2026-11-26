@@ -30,9 +30,17 @@ jobs:
           node --check plugin/lib/client.js
           node --check tools/cli.mjs
           node --check tools/mcp.mjs
-      - name: CLI version
+      - name: CLI version and platform-independent regression tests
         shell: bash
-        run: node tools/cli.mjs version
+        run: |
+          node tools/cli.mjs version
+          node tests/sanitize.test.mjs
+          node tests/label-pattern.test.mjs
+          node tests/asar-version.test.mjs
+          node tests/compat-range.test.mjs
+          node tests/acl-recovery.test.mjs
+          node tests/check-pack.test.mjs
+          node tests/file-fixes.test.mjs
       - name: CLI scan on a clean home
         shell: bash
         env:
@@ -65,6 +73,11 @@ jobs:
       - name: PowerShell 7
         shell: pwsh
         run: ./tests/smoke.ps1
+      - name: Isolated PowerShell and concatenated EXE regressions
+        shell: powershell
+        run: |
+          ./tests/powershell-regression.ps1
+          ./tests/rescue-integration.ps1
 
   doctor-sys:
     name: smoke · Rust engine (build / test / selftest)
@@ -74,27 +87,29 @@ jobs:
       - name: Build (zero dependency, offline)
         shell: pwsh
         run: |
-          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-            Write-Host 'cargo not found - skip'; exit 0
-          }
-          cargo build --release --manifest-path doctor-sys/Cargo.toml
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'cargo not found on Windows runner' }
+          cargo build --release --offline --manifest-path doctor-sys/Cargo.toml
       - name: Unit tests + selftest
         shell: pwsh
         run: |
-          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
-          cargo test --release --manifest-path doctor-sys/Cargo.toml
+          cargo test --release --offline --manifest-path doctor-sys/Cargo.toml
           $out = ./doctor-sys/target/release/doctor-sys.exe selftest | ConvertFrom-Json
           if (-not $out.data.ok) { throw 'doctor-sys selftest failed' }
           Write-Host 'doctor-sys selftest ok'
+      - name: Windows fake-engine protocol and workspace label matrix
+        shell: pwsh
+        run: |
+          node tests/bridge.test.mjs
+          node tests/workspace-label.test.mjs
       - name: MCP stdio regression (engine-present paths)
         shell: pwsh
         run: |
-          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
+          $env:DSH_DOCTOR_TEST_ENGINE = (Resolve-Path './doctor-sys/target/release/doctor-sys.exe').Path
+          node tests/rust-cli.test.mjs
           node tests/mcp.test.mjs
       - name: Write-primitive smoke (runner has a normal desktop context)
         shell: pwsh
         run: |
-          if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { exit 0 }
           $exe = './doctor-sys/target/release/doctor-sys.exe'
           $probe = Join-Path $env:RUNNER_TEMP 'doctor-sys-probe'
           $snap = Join-Path $env:RUNNER_TEMP 'doctor-sys-snap'

@@ -17,3 +17,7 @@ doctor-sys/target/
 
 # engine binary staged into the npm package by build.ps1
 plugin/bin/
+
+# local test scratch dirs / ACL recovery evidence (never committed)
+.dsh-test-tmp/
+.dsh-acl-recovery/

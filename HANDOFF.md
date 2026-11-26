@@ -1,7 +1,7 @@
 # DSH Doctor · 交接文档
 
 > **给接手的 Agent / 维护者**：读完这一份就能接着干，不需要翻聊天记录。
-> 最后更新：2026-11-21 · 当前版本 **v0.14.12** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
+> 最后更新：2026-11-22 · 当前版本 **v0.14.13** · 仓库：`github.com/jincheng3870682453-hash/dsh-doctor`
 
 ---
 
@@ -21,10 +21,10 @@ DSH 桌面端在 Windows 上会踩一批"系统状态"级的坑（最出名的�
 
 | 项 | 值 |
 |---|---|
-| 最新 Release | `v0.14.12`（2026-11-21 发布，3 个资产：exe / unix tar / 环境包） |
-| 插件版本 | `plugin/package.json` → 0.14.12（npm **尚未发布 0.14.12**：发布账号 `jinchengszj123` 被 npm 安全自动化冻结 72 小时，解冻后补发；GitHub Release 已先行） |
-| npm | **`dsh-doctor-plugin@0.14.11`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
-| 分支 | `main`（本地与远端内容一致；因网络限制，本地 git 无法 fetch/push，靠 API 推送） |
+| 最新 Release | `v0.14.13`（2026-11-22 发布，3 个资产：exe / unix tar / 环境包） |
+| 插件版本 | `plugin/package.json` → 0.14.13（npm 0.14.12 因发布账号冻结未发，本版直接补上；GitHub Release 0.14.12 已先行） |
+| npm | **`dsh-doctor-plugin@0.14.13`**（latest；发布账号 `jinchengszj123`，安全密钥型 2FA） |
+| 分支 | `main`（本地与远端内容一致；远端历史由 API 推送重写为单提交，本地提交前需 `git reset --soft origin/main` 对齐） |
 | CI | `.github/workflows/ci.yml`（三系统冒烟 + 集成 + 压力）、`build.yml`（构建 + 产物冒烟 + tag 自动发版） |
 | 桌面端运行时 | 本机 `E:\dsh`，DSH 0.2.1-rc.2，Electron 44.x |
 | 本机 GUI | `http://127.0.0.1:50819`（端口每次重启会变，以运行时上下文为准） |
@@ -250,9 +250,9 @@ bash tools/package-unix.sh          # Unix 包
 
 ### 发布（本机特殊流程）
 
-网络抽风时 `github.com:443` 直连时好时坏（2026-11-21 实测：push main 成功、几分钟后 push tag 超时）。所以：
+网络抽风时 `github.com:443` 直连时好时坏（2026-11-21 实测：push main 成功、几分钟后 push tag 超时；2026-11-22 直连恢复正常）。所以：
 
-1. **先试直连**：`git push origin main` / `git push origin v0.14.12`；
+1. **先试直连**：`git push origin main` / `git push origin v0.14.13`；
 2. **直连超时就走 REST API**（`api.github.com` 一直可达）：
    - 推 main：`node tools/push.mjs`（需 `GH_TOKEN`）；
    - 打 tag（必须建在【远端】main 的 sha 上，避免 API 推送造成的分叉）：
@@ -275,12 +275,12 @@ $sha = (Invoke-RestMethod -Uri 'https://api.github.com/repos/jincheng3870682453-
 | macOS / Linux 未实机验证 | 只有 Windows 真机跑过 | 找真机跑 Unix 包，补 CI 覆盖不到的部分 |
 | 升级官方插件会带回宿主包副本 | 本次把 subagent 插件 rc.1→rc.3 后，profile 里出现 `schemastery` 副本（医生当场报 `profile-host-duplicate`） | 装/升级插件后立刻体检一次；`profile-host-dup` 修 |
 | 疑似问题清单 | `bugs/unverified.md` 12 条待复现（第三方 id 漂移、npm 装完不启用、macOS 包、锁竞态等） | 有现场后按图鉴格式转正 |
-| npm 发布流程（可复用） | 账号用**安全密钥型 2FA**：非 TTY 下 npm 把认证 URL 打码，必须用持久终端跑 `npm publish --access public --auth-type=web`，按 ENTER 开浏览器完成安全密钥验证 | 记录：旧号 `jinchengszj` 被冻（未解冻也不影响发布）；发布账号 `jinchengszj123`；`npm pack --dry-run` 必须包含 `lib/scan-worker.mjs`（9 文件） |
+| npm 发布流程（可复用） | 账号用**安全密钥型 2FA**：非 TTY 下 npm 把认证 URL 打码，必须用持久终端跑 `npm publish --access public --auth-type=web`，按 ENTER 开浏览器完成安全密钥验证 | 记录：旧号 `jinchengszj` 被冻（未解冻也不影响发布）；发布账号 `jinchengszj123`；`npm pack --dry-run` 必须包含 `lib/scan-worker.mjs` 与 `lib/pack-regex-worker.mjs`（11 文件，含 `bin/doctor-sys.exe`） |
 | 自动更新只打开下载页 | 不自动替换（link 安装也无法替换） | 可做 zip 下载覆盖 + 重启提示 |
 | 外部守护未集成 | `tools/watch.mjs` 需手动跑（v0.12.0 起气泡优先走引擎 notify） | 做安装向导（自启/托盘/卸载） |
 | AUMID 原生通知 | host 只能渲染层发；DSH 死透时没有通知 | `doctor-sys.exe notify` 原语 + watch.mjs 已接（v0.12.0）；沙箱内被 UIPI 拒，如实返回 shown:false |
-| 基线未随版本演进 | 内置默认基线是静态的 | 定期对照新 DSH 版本更新 |
-| 桥接默认不开启 | 插件走 doctor-sys 需设 `DSH_DOCTOR_SYS`（写原语在 host 上下文可用，已在 CI 冒烟） | 稳定期后考虑插件 zip 附带引擎 + 自动发现 |
+| 基线未随版本演进 | 内置默认基线是静态的；本次核对的是本机 Desktop runtime 0.2.2-rc.5 | 定期对照新 DSH 版本更新；不把单个版本硬编码为诊断阈值 |
+| 桥接默认不开启 | 源码开发目录没有引擎时需设 `DSH_DOCTOR_SYS`；正规构建会把同一引擎放入插件 zip / 环境包 / EXE | CI 和本地统一验收引擎哈希，link 安装需先构建 |
 | doctor-sys 未实机覆盖全部原语 | notify/quarantine/kill-tree 只在开发机 + CI runner 验证过；reg 原语未实现 | 真机矩阵补验；按需补 reg-read |
 | EXE 在沙箱内写文件受限 | 已降级为打印报告 | 文档已提示"在桌面双击运行" |
 
@@ -291,7 +291,7 @@ $sha = (Invoke-RestMethod -Uri 'https://api.github.com/repos/jincheng3870682453-
 - **中文、直接、短**；不要客套，不要"综上所述"。
 - **不吹牛**：宣传必须能兑现；做不到就改文案或真做。宣传句与实际行为逐条对齐（v0.7.0 起）。
 - **无 emoji**：README / docs / CLI 输出 / 报告里一律不用（历史已清理，`tools/strip-icons.ps1`）。
-- **修复三原则**：默认只读、先备份、改最小、复检、可回滚。
+- **修复原则**：默认只读、先备份、改最小、复检、可回滚；杀进程/刷新外壳等不可回滚动作必须明示。
 - **不改 DSH 安装目录**、不注册服务/驱动、检查包无 shell 通道。
 - 面板禁止 `position: fixed` 覆盖层（会盖住窗口按钮），用内容流横幅。
 - 提交信息：`fix: / feat: / docs: / chore:` + 中文一句话。
@@ -304,7 +304,7 @@ $sha = (Invoke-RestMethod -Uri 'https://api.github.com/repos/jincheng3870682453-
 ```powershell
 node tools/cli.mjs scan            # 应正常输出体检结果
 node tools/cli.mjs diff            # 应写出桌面 MD（已脱敏）
-powershell -File tools/build.ps1   # 应产出 5 个产物（含 doctor-sys.exe，需要 cargo；没有则 4 个 + 跳过提示）
+powershell -File tools/build.ps1 -NodeExe 'C:\path\to\node20.exe'   # 构建全部产物；环境包必须 Node 20，验收引擎哈希与包结构
 ./dist/release/dsh-doctor.exe scan # EXE 应能跑
 ./dist/release/doctor-sys.exe selftest   # Rust 引擎自检应 ok:true
 $env:GH_TOKEN=(gh auth token); node tools/push.mjs   # 应输出 PUSH_OK

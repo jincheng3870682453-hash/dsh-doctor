@@ -102,7 +102,7 @@ flowchart TD
 
 约束（评审会看）：
 
-1. **先备份、可回滚**；失败要还原，不能"改一半"。
+1. **先备份、可回滚**；失败要还原，不能"改一半"。杀进程、刷新外壳等动作不具备同意义上的回滚，必须明确说明。
 2. **能用 DSH 自己的服务就不改文件**；改文件只做最小动作。
 3. 修复 id 必须同时出现在 `docs/catalog.md`；自动修复还要有防抖上限。
 4. 破坏性动作（删会话、改权限、重启服务）默认拒绝，必须给用户明确提示。
@@ -149,11 +149,11 @@ rescueWeb() → findRuntime()（dsh → npx @next）
 
 ## 7. 加一个检查/修复（两种运行时都要）
 
-> 这是本项目最容易踩的坑：**EXE 走 PS 检查表，插件走 JS 检查表**，只加一边就会出现"面板能报、EXE 不报"。
+> 这是本项目最容易踩的坑：**EXE 走 PS 检查表，插件走 JS 检查表**，原生 Rust 另有较少的检查。先读 [compatibility.md](compatibility.md)；只加一边就会出现"面板能报、EXE 不报"。
 
 1. `plugin/lib/index.js`：写 `checkXxx()` → 加进 `scan()` 的 `builtin` 数组 → 需要修复就加 `FIXES` 条目并给 finding 填 `fixId`；
 2. `src/lib/checks.ps1`：写对应的 `Test-DoctorXxx()` → 加进 `Invoke-DoctorScan` 列表；`src/lib/fixes.ps1` 加 `Repair-DoctorXxx()` 并在 `Invoke-DoctorFix` 的 switch 里注册；
-3. `docs/catalog.md` 加一行（版本号、可修复与否）；必要时 `docs/traps.md` / `bugs/` 补案例；
+3. `docs/catalog.md` 和 `docs/compatibility.md` 加一行（版本、运行时、可修复与否）；必要时 `docs/traps.md` / `bugs/` 补案例；
 4. `tests/` 加最小可复现用例；`tools/build.ps1` 全量构建，`dsh-doctor.exe scan` 和 `node tools/cli.mjs scan` 都要跑一遍；
 5. CI 会跑多平台 smoke + Rust selftest；tag 后 `build.yml` 出 3 个 Release 资产。
 
@@ -180,7 +180,7 @@ node tools/cli.mjs scan
 - 改动必须可回滚，修复先备份；
 - 新检查/修复要同时覆盖 JS 与 PS 两侧（或明确标注只在某一侧）；
 - 不碰 DSH 安装目录、不注册服务/驱动；
-- 报告与日志默认脱敏；
+- 对外报告经过脱敏；脱敏只覆盖用户名、主机名、用户目录和邮箱，非用户目录路径与 token 仍需人工检查；
 - 客户端模块 id / patch 行 name / 包名三者一致（`bundle-identity-drift` 检查就是为此）。
 
 ## 10. 想先看什么

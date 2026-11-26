@@ -49,6 +49,6 @@
   },
   "report": {
     "submitAs": "https://github.com/jincheng3870682453-hash/dsh-doctor/issues/new",
-    "note": "报告含本机路径与用户名，提交前自行脱敏。"
+    "note": "报告会自动替换用户名、主机名、用户目录和邮箱；非用户目录路径、token、Cookie 等不会通用清除，提交前必须人工检查。"
   }
 }

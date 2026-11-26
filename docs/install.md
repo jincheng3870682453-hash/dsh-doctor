@@ -14,7 +14,7 @@
 
 ## 方式二：本地目录 / 离线安装（npm 不通时）
 
-1. 下载 Release 里的 `dsh-doctor-plugin.zip`，**解压到一个固定目录**，例如 `D:\dsh-doctor-plugin`（别放桌面，免得和图标修复互相干扰）；
+1. `git clone` 本仓库后运行 `powershell -File tools/build.ps1`，从 `dist/release/dsh-doctor-plugin.zip` 取得本地插件包；或在仓库 `Actions` 的成功构建中下载 `dsh-doctor-pluginzip` artifact。**它不在 GitHub Release 的三个公开下载资产里**；解压到固定目录（别放桌面）；
 2. 侧边栏 → 插件 → 添加，把**解压后的绝对目录**粘进去；
 3. 「安装源」（中国大陆镜像源）对本地目录没有影响，保持默认；
 4. 点安装。装完默认启用，侧边栏出现「私人医生」；没立即生效就重启一次 DSH。
@@ -51,7 +51,7 @@ DSH 起不来、面板打不开、连网页版都进不去时，插件功能一�
 | 修桌面图标 | 菜单 `3` |
 | 生成环境差异报告（可提交 issue） | `dsh-doctor.exe diff`，或菜单 `9` |
 
-面板里的「环境差异报告」和 `dsh-doctor.exe diff` 是同一套逻辑、同一份基线。
+面板和 `dsh-doctor.exe diff` 都会做基线对比与脱敏，但分别由 JS 和 PowerShell 实现，检查细节可能不同。三套实现的能力边界见 [compatibility.md](compatibility.md)。
 
 ## 零环境
 

@@ -56,6 +56,8 @@ if (process.platform === 'win32') {
 		'@echo off',
 		'if "%~1"=="acl-read" (',
 		'  "' + nodeExe + '" -e "require(\'fs\').createReadStream(process.env.ACL_ANSWER).pipe(process.stdout)"',
+		') else if "%~1"=="acl-save" (',
+		'  echo {"ok":true,"op":"acl-save","data":{"done":true}}',
 		') else if "%~1"=="set-integrity-label" (',
 		'  if not "%ACL_STICKY%"=="1" copy /y "%ACL_MEDIUM%" "%ACL_ANSWER%" >nul',
 		'  echo {"ok":true,"op":"set-integrity-label","data":{"done":true}}',
@@ -117,18 +119,33 @@ if (process.platform === 'win32') {
 	const unreadable = await engine.scan()
 	assert.ok(Array.isArray(unreadable), '引擎失败降级后 scan 不应抛')
 
-	// 修复链路：假引擎 set-integrity-label/remove-deny-ace 都答 ok，且标签真的被改掉，
+	// 修复链路：引擎先保存完整 SDDL；假引擎随后把状态改为 Medium。
 	// 修复后复检读回 Medium —— 应 verified。
 	setSddl(lowSddl)
-	const fix = await engine.applyFixById('workspace-label')
+	// 真实备份协议已由 Rust 测试覆盖；此处用带文件副作用的适配器，保持本 fixture 无真实 ACL 写入。
+	const sys = engine.doctorSys
+	const adapter = {
+		isWindows: true,
+		aclSddl: () => readFileSync(answerFile, 'utf8').includes(';;;LW') ? lowSddl : mediumSddl,
+		doctorSys: (op, args) => {
+			if (op === 'acl-save') { writeFileSync(args.file, JSON.stringify({ path: workspaceDir, sddl: lowSddl })); return { ok: true } }
+			if (op === 'set-integrity-label') { if (process.env.ACL_STICKY !== '1') setSddl(mediumSddl); return { ok: true } }
+			if (op === 'remove-deny-ace') return { ok: true }
+			if (op === 'acl-restore') { setSddl(lowSddl); return { ok: true } }
+			return sys(op, args)
+		},
+		powershell: () => ({ ok: false, out: '', err: 'fixture forbids PowerShell fallback' }),
+	}
+	const fix = engine.fixIntegrityLabelOnPath(workspaceDir, { system: adapter })
 	assert.equal(fix.ok, true, '假引擎下修复应成功（' + JSON.stringify(fix) + '）')
 	assert.equal(readFileSync(answerFile, 'utf8').includes(';;;ME'), true, '修复应把假引擎的状态切到 Medium')
 
 	// 复检仍 Low → fail-closed 报失败：ACL_STICKY=1 让"改标签"不生效。
 	process.env.ACL_STICKY = '1'
 	setSddl(lowSddl)
-	const fixBad = await engine.applyFixById('workspace-label')
+	const fixBad = engine.fixIntegrityLabelOnPath(workspaceDir, { system: adapter })
 	assert.equal(fixBad.ok, false, '复检仍 Low 必须报失败（fail-closed）')
+	assert.equal(fixBad.restored, true, '失败应使用已验证的完整 SDDL 备份恢复')
 	delete process.env.ACL_STICKY
 
 	delete process.env.DSH_DOCTOR_SYS

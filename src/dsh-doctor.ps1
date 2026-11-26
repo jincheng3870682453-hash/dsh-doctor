@@ -36,13 +36,11 @@ function Show-DoctorHelp {
     Write-Host '  dsh-doctor.cmd list                     List available fixes'
     Write-Host '  dsh-doctor.cmd fix -Id <id> [-Yes]      Apply one fix'
     Write-Host '  dsh-doctor.cmd report [-Out <dir>]      Write a bug-report bundle'
-    Write-Host '  dsh-doctor.cmd watch [-Seconds 120]     Watch the Desktop and report who is writing to it'
+    Write-Host '  dsh-doctor.cmd watch [-Seconds 120]     Record Desktop file events (does not identify a writer PID)'
     Write-Host '  dsh-doctor.cmd version                  Print the version'
     Write-Host ''
     Write-Host 'Fixes:'
-    Write-Host '  desktop-label      Reset the Desktop integrity label / Everyone deny ACE'
-    Write-Host '  workspace-entry    Remove Desktop-like paths from the DSH workspace registry'
-    Write-Host '  profile-host-dup   Quarantine duplicate host packages inside a profile'
+    Show-DoctorFixCatalog
     Write-Host ''
 }
 
@@ -59,9 +57,7 @@ try {
             }
         }
         'list' {
-            Write-Host 'desktop-label      Reset the Desktop integrity label / Everyone deny ACE'
-            Write-Host 'workspace-entry    Remove Desktop-like paths from the DSH workspace registry'
-            Write-Host 'profile-host-dup   Quarantine duplicate host packages inside a profile'
+            Show-DoctorFixCatalog
         }
         'fix' {
             if ([string]::IsNullOrWhiteSpace($Id)) { throw 'fix requires -Id. Run "dsh-doctor.cmd list" to see the ids.' }
@@ -81,8 +77,11 @@ try {
         'version' {
             Get-DoctorVersion
         }
-        default {
+        'help' {
             Show-DoctorHelp
+        }
+        default {
+            throw ('Unknown command: ' + $Command + '. Run "dsh-doctor.cmd help".')
         }
     }
 } catch {

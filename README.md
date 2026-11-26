@@ -10,7 +10,7 @@
 
 [更新记录](UPDATES.md) · [Bug 图鉴](bugs/README.md) · [**贡献者清单**](CONTRIBUTORS.md) · [参与贡献](CONTRIBUTING.md)
 
-[![Version](https://img.shields.io/badge/Version-0.14.12-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
+[![Version](https://img.shields.io/badge/Version-0.14.13-4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![npm](https://img.shields.io/npm/v/dsh-doctor-plugin?label=npm&color=4D6BFE)](https://www.npmjs.com/package/dsh-doctor-plugin)
 [![Release](https://img.shields.io/github/v/release/jincheng3870682453-hash/dsh-doctor?label=Download&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/jincheng3870682453-hash/dsh-doctor/ci.yml?label=CI&logo=github&color=4D6BFE)](https://github.com/jincheng3870682453-hash/dsh-doctor/actions)
@@ -50,7 +50,7 @@
 ## 它到底能干什么
 
 - **查**：体检本机 DSH 状态，每条带路径和原始证据，默认只读；
-- **修**：一键修复，**先备份 → 改最小 → 立刻复检**，失败自动还原；
+- **修**：文件与 ACL 修复先备份、改最小、立刻复检，失败报告恢复结果；杀进程等不可回滚动作会明确提示；
 - **守**：后台每 30 秒巡检桌面完整性标签，被 DSH 改坏就拉回来，不闪屏；
 - **报**：一键生成给 AI / 给 issue 的脱敏报告（求助报告 + 环境差异报告）；
 - **逃**：真修不好时，生成交接报告 + 起隔离端口的网页版 DSH 接手。
@@ -71,6 +71,7 @@
 | [HANDOFF.md](HANDOFF.md) | 交接文档：专项清单 + 架构 + 发布手册 + 已知风险 |
 | [docs/baseline.md](docs/baseline.md) | 环境差异报告：和标准 DSH 比差在哪、怎么提交 |
 | [docs/catalog.md](docs/catalog.md) | 修复目录：每条检查 / 备份位置 / 验证方式 |
+| [docs/compatibility.md](docs/compatibility.md) | JS / PowerShell / Rust 的真实能力差异，不把三套实现混为一谈 |
 | [docs/protocol.md](docs/protocol.md) | 社区检查包协议（写 JSON 就能加检查） |
 | [doctor-sys/README.md](doctor-sys/README.md) | Rust 原语引擎：协议、15 个原语、Windows 硬规则 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 参与贡献：提 bug、写检查包、提 PR |
@@ -91,10 +92,10 @@
 
 ## 安全
 
-- 默认只读；每个修复先备份、改完复检，失败自动还原；
+- 默认只读；文件与 ACL 修复先备份、改完复检，失败尝试恢复并如实报告结果；
 - 没有 shell 通道：检查包只能声明「检测原语 + 内置修复 id」；
 - 不碰 DSH 安装目录、不注册服务/驱动；改动均可回滚；
-- **报告自动脱敏**：用户名 / 主机名 / 邮箱 / 用户主目录替换为 `user`、`<machine>`、`user@example.com`。
+- **报告自动脱敏**：用户名 / 主机名 / 邮箱 / 用户主目录替换为 `user`、`<machine>`、`user@example.com`；其他路径与 token 仍需人工检查。
 
 ## License
 

@@ -2,6 +2,9 @@
 # 急救箱交互菜单。由 build-exe.ps1 和其它 lib 文件拼接后内嵌进 dsh-doctor.exe。
 # 不依赖 DSH / Node / 网络；只用 Windows 自带的 PowerShell 与系统命令。
 
+# build.ps1 的真实 C# 启动器把内嵌引擎通过 -EnginePath 传给拼接脚本。
+# 参数声明和环境设置位于首个拼接片段 src/lib/common.ps1。
+
 function Show-RescueBanner {
     Write-Host ''
     Write-Host '   DSH 私人医生 · 急救箱' -ForegroundColor Cyan
@@ -15,8 +18,14 @@ function Get-RescueBackups {
     $doctorHome = Get-DshHome
     $aclDir = Join-Path $doctorHome 'dsh-doctor-backups'
     if (Test-Path -LiteralPath $aclDir) {
-        foreach ($file in @(Get-ChildItem -LiteralPath $aclDir -Filter 'desktop-acl-*.txt' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
-            [void]$items.Add([pscustomobject]@{ Kind = 'acl'; Path = $file.FullName; Label = ('桌面 ACL 备份 · ' + $file.LastWriteTime.ToString('MM-dd HH:mm')) })
+        foreach ($file in @(Get-ChildItem -LiteralPath $aclDir -Filter 'desktop-acl-*.txt' -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike '*.path.txt' } | Sort-Object LastWriteTime -Descending)) {
+            $target = [Environment]::GetFolderPath('Desktop')
+            $metadata = $file.FullName + '.path.txt'
+            if (Test-Path -LiteralPath $metadata) {
+                try { $target = [string](Get-Content -LiteralPath $metadata -Raw -Encoding UTF8).Trim() } catch { }
+            }
+            [void]$items.Add([pscustomobject]@{ Kind = 'acl'; Path = $file.FullName; TargetPath = $target; Label = ('ACL 备份 [' + $target + '] · ' + $file.LastWriteTime.ToString('MM-dd HH:mm')) })
         }
     }
     $storages = Join-Path $doctorHome 'storages'
@@ -43,11 +52,13 @@ function Restore-RescueBackup {
     param([Parameter(Mandatory)]$Item)
     switch ($Item.Kind) {
         'acl' {
-            $desktop = [Environment]::GetFolderPath('Desktop')
-            $parent = Split-Path -Parent $desktop
+            $target = [string](Get-JsonProperty -Object $Item -Name 'TargetPath' -Default ([Environment]::GetFolderPath('Desktop')))
+            if ([string]::IsNullOrWhiteSpace($target)) { throw 'ACL 备份缺少原路径，不能安全还原。' }
+            $parent = Split-Path -Parent $target
+            Write-DoctorInfo ('还原命令：icacls "' + $parent + '" /restore "' + $Item.Path + '"')
             $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($parent, '/restore', $Item.Path)
-            if ($result.ExitCode -ne 0) { Write-DoctorError ('还原失败：' + $result.Output); return }
-            Write-DoctorInfo '桌面 ACL 已还原。建议重启资源管理器。'
+            if ($result.ExitCode -ne 0) { throw ('还原失败：' + $result.Output) }
+            Write-DoctorInfo ('ACL 已还原：' + $target)
         }
         'workspace' {
             $target = Join-Path (Get-DshHome) 'storages\workspace.json'
@@ -464,21 +475,26 @@ function Invoke-RescueMenu {
     }
 }
 
-if ($env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {
-    Invoke-RescueScan
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix-desktop') {
-    Repair-DoctorDesktopLabel
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diff') {
-    Show-RescueDiffReport
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diag') {
-    Show-RescueWriteDiagnostics
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix-all') {
-    Invoke-DoctorFixAll
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'clear-cookies') {
-    Repair-DoctorCookies
-} elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix') {
-    if ([string]::IsNullOrWhiteSpace($env:DSH_DOCTOR_EXE_ID)) { throw 'fix needs -Id <id>（例如 fix -Id workspace-create）' }
-    Invoke-DoctorFix -Id $env:DSH_DOCTOR_EXE_ID -Yes
-} else {
-    Invoke-RescueMenu
+try {
+    if ($env:DSH_DOCTOR_EXE_ARGS -eq 'scan') {
+        Invoke-RescueScan
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix-desktop') {
+        Repair-DoctorDesktopLabel
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diff') {
+        Show-RescueDiffReport
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'diag') {
+        Show-RescueWriteDiagnostics
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix-all') {
+        Invoke-DoctorFixAll
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'clear-cookies') {
+        Repair-DoctorCookies
+    } elseif ($env:DSH_DOCTOR_EXE_ARGS -eq 'fix') {
+        if ([string]::IsNullOrWhiteSpace($env:DSH_DOCTOR_EXE_ID)) { throw 'fix needs -Id <id>（例如 fix -Id create-workspace-dir）' }
+        Invoke-DoctorFix -Id $env:DSH_DOCTOR_EXE_ID -Yes
+    } else {
+        Invoke-RescueMenu
+    }
+} catch {
+    Write-DoctorError ('操作失败：' + $_.Exception.Message)
+    exit 1
 }

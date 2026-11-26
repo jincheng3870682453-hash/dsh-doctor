@@ -11,7 +11,8 @@
  */
 import { existsSync, readFileSync, readdirSync, renameSync, copyFileSync, statSync, writeFileSync, mkdirSync, appendFileSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs'
 import { homedir, hostname } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve, isAbsolute } from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { spawnSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import * as zlib from 'node:zlib'
@@ -706,10 +707,17 @@ function fixCompactCredentials() {
 	const head = parsed.lines.slice(0, parsed.start + 1)
 	const body = []
 	for (const record of latest.values()) body.push(...record.block)
-	try { writeFileSync(parsed.file, head.concat(body).join('\n') + '\n', 'utf8') } catch (error) {
-		return { ok: false, message: '写回失败（备份在 ' + backup + '）：' + String(error && error.message ? error.message : error) }
+	try {
+		writeFileAtomic(parsed.file, head.concat(body).join('\n') + '\n')
+		const verified = readCredentialRecords()
+		if (verified === null || verified.records.length !== latest.size || new Set(verified.records.map(item => item.key)).size !== latest.size) throw new Error('压缩后 records 数量或 key 不符合预期')
+	} catch (error) {
+		try { copyFileSync(backup, parsed.file) } catch (restoreError) {
+			return { ok: false, backup, restored: false, message: '写入或复检失败，且凭据恢复失败，请立即使用备份：' + backup }
+		}
+		return { ok: false, backup, restored: true, message: '写入或复检失败，已从备份恢复原凭据：' + String(error.message || error) }
 	}
-	return { ok: true, message: '已压缩登录记录：' + parsed.records.length + ' → ' + latest.size + ' 条，备份在 ' + backup + '。DSH 会自动重载凭据。' }
+	return { ok: true, verified: true, backup, message: '已压缩并复检登录记录：' + parsed.records.length + ' → ' + latest.size + ' 条，备份在 ' + backup + '。DSH 会自动重载凭据。' }
 }
 
 function patchBackupNames(profileDir) {	try {
@@ -1003,6 +1011,91 @@ function checkWorkspaceWritability() {
 /* ── 社区检查包（协议 v1）──────────────────────────────────────────── */
 
 const PACK_DIR = () => join(dshHome(), 'dsh-doctor', 'checks')
+const PACK_MAX_BYTES = 1024 * 1024
+const PACK_SEVERITIES = ['high', 'medium', 'low']
+const PACK_FIX_IDS = Object.freeze(['desktop-label', 'workspace-label', 'workspace-entry', 'profile-host-dup', 'restore-patch-layer', 'workspace-acl'])
+const PACK_VAR_ROOTS = {
+	'{{dshHome}}': () => dshHome(),
+	'{{desktop}}': () => desktopPath(),
+	'{{profiles}}': () => join(dshHome(), 'profiles'),
+	'{{sessions}}': () => join(dshHome(), 'sessions'),
+	'{{appData}}': () => process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'),
+}
+
+function packError(packId, message) {
+	return finding('pack-error:' + packId, 'low', '检查包执行失败：' + packId, String(message).slice(0, 500), '', null, packId)
+}
+
+/** 只展开协议根变量，且变量必须位于开头；其余字符原样作为路径。 */
+function expandPackPath(input) {
+	if (typeof input !== 'string' || input.length === 0 || input.length > 4096 || input.includes('\0')) throw new Error('path 必须是非空、长度受限的字符串')
+	let root = null
+	let prefix = ''
+	for (const [name, getRoot] of Object.entries(PACK_VAR_ROOTS)) {
+		if (input.startsWith(name)) { root = getRoot(); prefix = name; break }
+	}
+	const path = root === null ? input : root + input.slice(prefix.length)
+	if (!isAbsolute(path)) throw new Error('path 必须以协议变量或绝对路径开头')
+	return resolve(path)
+}
+
+/** 拒绝嵌套量词、反向引用等易失控结构，再用 worker 的扫描超时兜住执行时间。 */
+function validatePackRegex(pattern) {
+	if (typeof pattern !== 'string' || pattern.length === 0 || pattern.length > 400) throw new Error('file-regex.pattern 必须是 1–400 字符')
+	if (/\\[1-9]/.test(pattern) || /\(\?<[=!]/.test(pattern)) throw new Error('不允许反向引用或后行断言')
+	if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) throw new Error('不允许嵌套量词（灾难性回溯风险）')
+	return new RegExp(pattern)
+}
+
+let regexRequestId = 0
+let regexBusy = false
+
+/** 用共享状态同步等待一次结果；超时终止真正可能卡死的正则。 */
+function matchPackRegex(pattern, text) {
+	if (regexBusy) return false
+	const state = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
+	let worker = null
+	try {
+		regexBusy = true
+		worker = new Worker(new URL('./pack-regex-worker.mjs', import.meta.url), {
+			workerData: { state, id: regexRequestId += 1, pattern, text },
+			// DSH 可用 --input-type=module 启动宿主；文件 worker 不能继承该参数。
+			execArgv: process.execArgv.filter(argument => !argument.startsWith('--input-type')),
+		})
+		const status = Atomics.wait(state, 0, 0, 1000)
+		worker.terminate()
+		return status === 'ok' && Atomics.load(state, 0) === 1 && Atomics.load(state, 1) === 1
+	} catch (error) { return false }
+	finally {
+		regexBusy = false
+		if (worker !== null) worker.terminate()
+	}
+}
+
+function validateCheckPack(pack) {
+	if (pack === null || typeof pack !== 'object' || Array.isArray(pack)) throw new Error('检查包必须是对象')
+	if (pack.protocolVersion !== 1) throw new Error('protocolVersion 必须为 1')
+	if (typeof pack.id !== 'string' || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(pack.id)) throw new Error('id 不符合小写连字符规则')
+	if (typeof pack.title !== 'string' || pack.title.length < 1 || pack.title.length > 120) throw new Error('title 长度必须为 1–120')
+	if (!Array.isArray(pack.checks) || pack.checks.length < 1 || pack.checks.length > 200) throw new Error('checks 必须包含 1–200 条')
+	for (const check of pack.checks) {
+		if (check === null || typeof check !== 'object' || Array.isArray(check)) throw new Error('check 必须是对象')
+		if (typeof check.id !== 'string' || !/^[a-z0-9][a-z0-9:._-]{1,80}$/.test(check.id)) throw new Error('check.id 不符合规则')
+		if (typeof check.title !== 'string' || check.title.length < 1 || check.title.length > 160) throw new Error('check.title 长度必须为 1–160')
+		if (!PACK_SEVERITIES.includes(check.severity)) throw new Error('severity 必须为 high/medium/low')
+		if (check.detail !== undefined && (typeof check.detail !== 'string' || check.detail.length > 2000)) throw new Error('detail 最多 2000 字符')
+		if (check.detect === null || typeof check.detect !== 'object' || Array.isArray(check.detect) || !Object.prototype.hasOwnProperty.call(DETECTORS, check.detect.type)) throw new Error('未知 detect.type')
+		if (check.fix !== undefined && (check.fix === null || !PACK_FIX_IDS.includes(check.fix.type))) throw new Error('fix 只能引用白名单内置修复')
+		if (['acl', 'file-regex', 'dir-contains'].includes(check.detect.type)) expandPackPath(check.detect.path)
+		if (check.detect.type === 'acl' && !['low-label', 'everyone-deny'].includes(check.detect.test)) throw new Error('acl.test 无效')
+		if (check.detect.type === 'file-regex') {
+			validatePackRegex(check.detect.pattern)
+			if (!Number.isInteger(check.detect.maxFiles) || check.detect.maxFiles < 1 || check.detect.maxFiles > 2000) throw new Error('maxFiles 必须为 1–2000 的整数')
+		}
+		if (check.detect.type === 'dir-contains' && (!Array.isArray(check.detect.names) || check.detect.names.length < 1 || check.detect.names.length > 50 || check.detect.names.some(name => typeof name !== 'string' || name.length === 0 || name.length > 255))) throw new Error('names 必须为 1–50 个非空字符串')
+	}
+	return pack
+}
 
 function expandVars(text) {
 	return String(text)
@@ -1072,12 +1165,16 @@ const DETECTORS = {
 		const findings = []
 		const dir = expandVars(check.path)
 		const maxFiles = typeof check.maxFiles === 'number' ? Math.min(check.maxFiles, 2000) : 400
-		const pattern = new RegExp(check.pattern)
+			validatePackRegex(check.pattern)
 		if (!existsSync(dir)) return findings
 		for (const file of listFiles(dir, maxFiles)) {
 			let text = ''
-			try { text = readFileSync(file, 'utf8') } catch (error) { continue }
-			if (!pattern.test(text)) continue
+			try {
+				// 每个文件有界，避免一份大型日志同时消耗内存和正则时间。
+				if (statSync(file).size > 1024 * 1024) continue
+				text = readFileSync(file, 'utf8')
+			} catch (error) { continue }
+			if (!matchPackRegex(check.pattern, text)) continue
 			findings.push(finding(check.id, check.severity || 'medium', check.title,
 				(check.detail || '') + ' 命中文件：' + file, file, null, check.pack))
 		}
@@ -1116,39 +1213,40 @@ function loadCheckPacks() {
 	try { files = readdirSync(dir).filter(name => name.toLowerCase().endsWith('.json')) } catch (error) { return findings }
 	for (const name of files) {
 		let pack = null
-		try { pack = JSON.parse(readFileSync(join(dir, name), 'utf8')) } catch (error) { continue }
-		if (pack === null || !Array.isArray(pack.checks)) continue
-		const packId = typeof pack.id === 'string' ? pack.id : name.replace(/\.json$/i, '')
+		let packId = name.replace(/\.json$/i, '')
+		try {
+			const file = join(dir, name)
+			if (statSync(file).size > PACK_MAX_BYTES) throw new Error('检查包不能超过 1 MiB')
+			pack = validateCheckPack(JSON.parse(readFileSync(file, 'utf8')))
+			packId = pack.id
+		} catch (error) {
+			findings.push(packError(packId, error && error.message ? error.message : error))
+			continue
+		}
 		for (const check of pack.checks) {
-			if (check === null || typeof check !== 'object') continue
-			if (typeof check.detect !== 'object' || check.detect === null) continue
-			const detector = DETECTORS[String(check.detect.type)]
-			if (typeof detector !== 'function') continue
+			const detector = DETECTORS[check.detect.type]
 			const spec = Object.assign({}, check, {
-				path: check.detect.path,
+				path: check.detect.path === undefined ? undefined : expandPackPath(check.detect.path),
 				pattern: check.detect.pattern,
 				test: check.detect.test,
 				names: check.detect.names,
 				maxFiles: check.detect.maxFiles,
-				id: typeof check.id === 'string' ? check.id : packId + ':' + String(check.detect.type),
-				title: typeof check.title === 'string' ? check.title : '社区检查：' + String(check.detect.type),
 				pack: packId,
 			})
 			try {
 				for (const item of detector(spec)) {
 					findings.push(Object.assign({}, item, {
-						id: spec.id,
-						severity: typeof check.severity === 'string' ? check.severity : item.severity,
-						title: spec.title,
-						detail: (typeof check.detail === 'string' ? check.detail + ' ' : '') + (item.detail || ''),
+						id: check.id,
+						severity: check.severity,
+						title: check.title,
+						detail: (check.detail ? check.detail + ' ' : '') + (item.detail || ''),
 						path: item.path || '',
 						source: packId,
-						fixId: check.fix && typeof check.fix.type === 'string' ? check.fix.type : item.fixId,
+						fixId: check.fix ? check.fix.type : item.fixId,
 					}))
 				}
 			} catch (error) {
-				findings.push(finding('pack-error:' + packId, 'low', '检查包执行失败：' + packId,
-					String(error && error.message ? error.message : error), '', null, packId))
+				findings.push(packError(packId, error && error.message ? error.message : error))
 			}
 		}
 	}
@@ -1242,7 +1340,10 @@ function saveLastScan(findings) {
 function ensureScanWorker() {
 	if (scanWorker !== null) return scanWorker
 	try {
-		scanWorker = new Worker(new URL('./scan-worker.mjs', import.meta.url))
+		// 发行 CLI 把宿主改名为 index.mjs，worker 会自动选择实际存在的入口。
+		scanWorker = new Worker(new URL('./scan-worker.mjs', import.meta.url), {
+			execArgv: process.execArgv.filter(argument => !argument.startsWith('--input-type')),
+		})
 		scanWorker.unref()
 		scanWorker.on('message', (message) => {
 			const waiter = scanWaiters.get(message && message.id)
@@ -1332,6 +1433,17 @@ function mkdirp(dir) {
 	try { mkdirSync(dir, { recursive: true }) } catch (error) { /* ignore */ }
 }
 
+/** JSON/文本先在同目录完整落盘，再替换，避免进程中断留下半个文件。 */
+function writeFileAtomic(file, text) {
+	const temp = join(dirname(file), '.' + String(process.pid) + '-' + randomBytes(12).toString('hex') + '.doctor-tmp')
+	try {
+		writeFileSync(temp, text, { encoding: 'utf8', flag: 'wx' })
+		renameSync(temp, file)
+	} finally {
+		try { unlinkSync(temp) } catch (error) { /* 已替换或写入失败 */ }
+	}
+}
+
 function backupDir() {
 	const dir = join(dshHome(), 'dsh-doctor-backups')
 	mkdirp(dir)
@@ -1349,7 +1461,7 @@ function acquireAclLock() {
 			if (age < 120000) return null
 			try { unlinkSync(file) } catch (error) { /* 过期锁清掉 */ }
 		}
-		writeFileSync(file, String(process.pid), 'utf8')
+		writeFileSync(file, String(process.pid), { encoding: 'utf8', flag: 'wx' })
 		return file
 	} catch (error) {
 		return null
@@ -1357,7 +1469,9 @@ function acquireAclLock() {
 }
 
 function releaseAclLock(file) {
-	try { unlinkSync(file) } catch (error) { /* ignore */ }
+	try {
+		if (readFileSync(file, 'utf8').trim() === String(process.pid)) unlinkSync(file)
+	} catch (error) { /* 已清理或不属于本进程 */ }
 }
 
 function fixDesktopLabel() {
@@ -1380,58 +1494,81 @@ function fixDesktopLabelUnlocked() {
  * icacls /save 备份 → 引擎优先 / icacls 兜底 → 复检 fail-closed → 刷新外壳（可选）。
  */
 function fixIntegrityLabelOnPath(target, options = {}) {
+	// 仅单元测试注入系统适配器；生产路由/检查包/MCP 都无法设置此入口。
+	if (options.system !== undefined) return repairIntegrityLabel(target, options, options.system)
+	return repairIntegrityLabel(target, options, { aclSddl, doctorSys, powershell, isWindows })
+}
+
+function repairIntegrityLabel(target, options, system) {
+	const { aclSddl: readAcl, doctorSys: sys, powershell: ps, isWindows: windows = isWindows } = system
 	const what = options.what || '目录'
-	if (!isWindows) {
-		return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
-	}
+	if (!windows) return { ok: false, message: '当前平台没有 Windows 的完整性标签机制，这一项不适用。' }
 	if (!existsSync(target)) return { ok: false, message: '目录不存在：' + target }
-	const before = aclSddl(target)
-	if (before.length === 0) {
-		// 读不到就动手是瞎修：明确失败，让用户知道当前看不到 ACL 的状态。
-		return { ok: false, message: '读不到 ' + what + '的 ACL（引擎和 PowerShell 都失败了），不敢动手。可以先重新体检看看详情。' }
-	}
+	const before = readAcl(target)
+	if (before.length === 0) return { ok: false, message: '读不到 ' + what + '的 ACL，未做任何修改。' }
 	if (!LOW_LABEL_PATTERN.test(before) && !/\(D;[^)]*;;;WD\)/.test(before)) {
 		return { ok: true, unchanged: true, message: what + '的 ACL 已经是干净的，不需要修。' }
 	}
-	const backupFile = join(backupDir(), 'integrity-acl-' + Date.now() + '.txt')
-	// 备份仍用 icacls /save 的格式（EXE 的回滚路径认它）；引擎只在 icacls 不可用时兜底。
-	let save = powershell('icacls ' + quote(target) + ' /save ' + quote(backupFile))
-	let engineUsed = false
-	if (!save.ok && doctorSysPath() !== null) {
-		const viaEngine = doctorSys('acl-save', { path: target, file: backupFile + '.json' })
-		if (viaEngine !== null && viaEngine.ok === true) save = { ok: true, out: backupFile + '.json' }
-	}
-	if (LOW_LABEL_PATTERN.test(before)) {
-		const viaEngine = doctorSys('set-integrity-label', { path: target, label: 'medium', recursive: true }, 120000)
-		if (viaEngine !== null && viaEngine.ok === true) {
-			engineUsed = true
-		} else {
-			const result = powershell('icacls ' + quote(target) + " /setintegritylevel '(OI)(CI)Medium'")
-			if (!result.ok) return { ok: false, message: '改完整性标签失败：' + (result.err || result.out) }
+
+	// 优先使用引擎的完整 SDDL 备份；icacls 仅作没有引擎时的兼容兜底。
+	const stamp = Date.now() + '-' + randomBytes(6).toString('hex')
+	const jsonBackup = join(backupDir(), 'integrity-acl-' + stamp + '.json')
+	const nativeBackup = join(backupDir(), 'integrity-acl-' + stamp + '.txt')
+	let backup = null
+	let restore = null
+	const saved = sys('acl-save', { path: target, file: jsonBackup })
+	if (saved !== null && saved.ok === true && existsSync(jsonBackup)) {
+		backup = jsonBackup
+		restore = () => sys('acl-restore', { file: jsonBackup })
+	} else {
+		const save = ps('icacls ' + quote(target) + ' /save ' + quote(nativeBackup))
+		if (save.ok && existsSync(nativeBackup)) {
+			backup = nativeBackup
+			restore = () => ps('icacls ' + quote(dirname(target)) + ' /restore ' + quote(nativeBackup))
 		}
+	}
+	if (backup === null) return { ok: false, message: what + '的 ACL 备份失败，未做任何修改。' }
+
+	const changed = []
+	const rollback = () => {
+		const result = restore()
+		if (result === null || result.ok !== true) return { restored: false, sddl: readAcl(target) }
+		const sddl = readAcl(target)
+		return { restored: sddl === before, sddl }
+	}
+	const fail = (message, recoveryRequired = false) => {
+		if (!recoveryRequired) return { ok: false, message: message + ' 尚未修改 ACL。', backup }
+		const recovered = rollback()
+		return {
+			ok: false, backup, restored: recovered.restored,
+			message: message + (recovered.restored
+				? ' 已从备份恢复原 ACL，并逐字复检一致。'
+				: ' 自动恢复未完成或未通过逐字复检，请立即使用备份人工恢复：' + backup),
+		}
+	}
+	const useEngine = backup.endsWith('.json')
+	if (LOW_LABEL_PATTERN.test(before)) {
+		const result = useEngine
+			? sys('set-integrity-label', { path: target, label: 'medium', recursive: true }, 120000)
+			: ps('icacls ' + quote(target) + " /setintegritylevel '(OI)(CI)Medium'")
+		// 引擎已应答但动作失败时，不能再用另一种方式重复修改；走已备份的回滚。
+		if (result === null || result.ok !== true) return fail('改完整性标签失败：' + String(result && (result.error || result.err || result.out) || '引擎不可用'), useEngine)
+		changed.push('label')
 	}
 	if (/\(D;[^)]*;;;WD\)/.test(before)) {
-		const viaEngine = doctorSys('remove-deny-ace', { path: target, everyone: true }, 120000)
-		if (viaEngine !== null && viaEngine.ok === true) {
-			engineUsed = true
-		} else {
-			powershell('icacls ' + quote(target) + " /remove:d '*S-1-1-0'")
-		}
+		const result = useEngine
+			? sys('remove-deny-ace', { path: target, everyone: true }, 120000)
+			: ps('icacls ' + quote(target) + " /remove:d '*S-1-1-0'")
+		if (result === null || result.ok !== true) return fail('删除 Everyone 拒绝项失败：' + String(result && (result.error || result.err || result.out) || '引擎不可用'), useEngine || changed.length > 0)
+		changed.push('deny')
 	}
-	const after = aclSddl(target)
-	// 复检读不到 = 没验证过：宁可报失败（fail-closed），不能拿空串当"没有 Low"。
-	const verified = after.length > 0 && !LOW_LABEL_PATTERN.test(after)
-	if (verified && options.refreshShell === true) refreshShellIcons()
+	const after = readAcl(target)
+	const verified = after.length > 0 && !LOW_LABEL_PATTERN.test(after) && !/\(D;[^)]*;;;WD\)/.test(after)
+	if (!verified) return fail('改完后 Low 标签或 Everyone 拒绝项仍存在，或 ACL 无法读回。', changed.length > 0)
+	if (options.refreshShell === true) refreshShellIcons()
 	return {
-		ok: verified,
-		verified,
-		message: verified
-			? what + '的标签已改回 Medium，写入能力不受影响。' + (engineUsed ? '（doctor-sys 引擎）' : '')
-				+ (options.refreshShell === true ? ' 已通知外壳重新取图标。' : '')
-			: after.length === 0
-				? '改完后读不回 ACL，无法验证是否修好。请重新体检确认。'
-				: '改完复检仍看到 Low 标签，请把这条反馈给我。',
-		backup: save.ok ? backupFile : null,
+		ok: true, verified: true, backup,
+		message: what + '的 ACL 已修复并复检通过，写入能力保留。' + (options.refreshShell === true ? '已通知外壳重新取图标。' : ''),
 	}
 }
 
@@ -1519,10 +1656,15 @@ async function fixWorkspaceEntries() {
 	if (Array.isArray(data.global && data.global.workspaceIds)) {
 		data.global.workspaceIds = data.global.workspaceIds.filter(id => !removedIds.includes(id))
 	}
-	writeFileSync(file, JSON.stringify(data, null, 2), 'utf8')
-	try { JSON.parse(readFileSync(file, 'utf8')) } catch (error) {
-		copyFileSync(backup, file)
-		return { ok: false, message: '改写后校验失败，已还原。' }
+	try {
+		writeFileAtomic(file, JSON.stringify(data, null, 2))
+		const verified = readWorkspaceRegistry()
+		if (verified === null || verified.list.some(item => workspaceRisk(item.path) !== null)) throw new Error('危险工作区引用仍存在')
+	} catch (error) {
+		try { copyFileSync(backup, file) } catch (restoreError) {
+			return { ok: false, backup, restored: false, message: '写入或复检失败，且原文件恢复失败，请立即使用备份：' + backup }
+		}
+		return { ok: false, backup, restored: true, message: '写入或复检失败，已从备份恢复原注册表。' }
 	}
 	return {
 		ok: true,
@@ -1535,35 +1677,53 @@ async function fixWorkspaceEntries() {
 function fixProfileHostDup() {
 	const dirs = profileHostDirs().filter(dir => hostPackagesIn(dir).length > 0)
 	if (dirs.length === 0) return { ok: true, unchanged: true, message: '没有发现宿主包副本，不需要修。' }
-	const stamp = Date.now()
-	// 只挪走"宿主包副本"本身，绝不整目录改名——同目录里还有插件的合法依赖。
-	const quarantineRoot = join(backupDir(), 'hostpkgs-' + stamp)
+	const quarantineRoot = join(backupDir(), 'hostpkgs-' + Date.now() + '-' + randomBytes(6).toString('hex'))
 	const moved = []
+	try { mkdirSync(quarantineRoot, { recursive: true }) } catch (error) {
+		return { ok: false, message: '创建隔离备份目录失败，未移动任何包：' + String(error.message || error) }
+	}
 	for (const dir of dirs) {
+		// 每个来源有独立路径，多个 profile 的同名宿主包不会互相覆盖。
+		const key = Buffer.from(resolve(dir)).toString('hex')
 		for (const name of hostPackagesIn(dir)) {
+			const source = join(dir, name)
+			const target = join(quarantineRoot, key, name)
 			try {
-				mkdirp(quarantineRoot)
-				const target = join(quarantineRoot, name)
-				renameSync(join(dir, name), target)
-				moved.push(name)
+				mkdirSync(dirname(target), { recursive: true })
+				renameSync(source, target)
+				moved.push({ source, target, name })
 			} catch (error) {
-				return { ok: false, message: '隔离 ' + name + ' 失败：' + (error && error.message ? error.message : error) }
+				const rollbackErrors = []
+				for (const item of moved.slice().reverse()) {
+					try { renameSync(item.target, item.source) } catch (rollbackError) { rollbackErrors.push(item.name) }
+				}
+				return {
+					ok: false, restored: rollbackErrors.length === 0, quarantine: quarantineRoot,
+					message: '隔离 ' + name + ' 失败：' + String(error.message || error) + (rollbackErrors.length === 0
+						? '；已把本轮移动的包按相反顺序移回原位。' : '；以下包未能移回：' + rollbackErrors.join('、') + '，请从 ' + quarantineRoot + ' 手动恢复。'),
+				}
 			}
 		}
 	}
+	const remaining = profileHostDirs().flatMap(dir => hostPackagesIn(dir))
+	if (remaining.length > 0) {
+		const rollbackErrors = []
+		for (const item of moved.slice().reverse()) {
+			try { renameSync(item.target, item.source) } catch (error) { rollbackErrors.push(item.name) }
+		}
+		return { ok: false, restored: rollbackErrors.length === 0, quarantine: quarantineRoot,
+			message: '隔离后仍能扫描到宿主包副本：' + remaining.join('、') + '。' + (rollbackErrors.length === 0 ? '本轮已移回。' : '部分包未能移回，请检查 ' + quarantineRoot) }
+	}
 	return {
-		ok: true,
-		verified: true,
-		message: '已隔离 ' + moved.length + ' 个宿主包副本（' + moved.join(', ') + '），其它插件不受影响。请完整退出并重新打开桌面端。',
-		moved,
-		quarantine: quarantineRoot,
+		ok: true, verified: true, moved: moved.map(item => item.name), quarantine: quarantineRoot,
+		message: '已隔离并复检 ' + moved.length + ' 个宿主包副本，其它插件未动。完整退出并重启 DSH 后生效。',
 	}
 }
 
-function fixRestorePatchLayer() {
+function fixRestorePatchLayer(options = {}) {
 	const profilesRoot = join(dshHome(), 'profiles')
 	if (!existsSync(profilesRoot)) return { ok: false, message: '找不到 profiles 目录：' + profilesRoot }
-	const restored = []
+	const targets = []
 	for (const name of readDirNames(profilesRoot)) {
 		if (name.includes('.stale')) continue
 		const dir = join(profilesRoot, name)
@@ -1572,21 +1732,57 @@ function fixRestorePatchLayer() {
 		const patchFile = join(dir, 'cordis.patch.yml')
 		let size = -1
 		try { size = statSync(patchFile).size } catch (error) { size = -1 }
-		if (size > 2) continue
+		if (size <= 2) targets.push({ name, dir, patchFile, source: join(dir, backups[0]), backupName: backups[0] })
+	}
+	if (targets.length === 0) return { ok: true, unchanged: true, message: '没有需要恢复的 patch 层。' }
+	const snapshots = []
+	try {
+		for (const target of targets) {
+			const original = existsSync(target.patchFile) ? readFileSync(target.patchFile) : null
+			const expected = readFileSync(target.source)
+			const backup = join(backupDir(), 'patch-' + Date.now() + '-' + randomBytes(6).toString('hex') + '-' + snapshots.length)
+			mkdirSync(backup, { recursive: true })
+			if (original !== null) writeFileSync(join(backup, 'original.yml'), original)
+			snapshots.push({ ...target, original, expected, backup })
+		}
+	} catch (error) {
+		return { ok: false, message: '恢复前读取或备份 patch 层失败，未修改任何文件：' + String(error.message || error) }
+	}
+	const completed = []
+	const attempted = []
+	const rollback = () => {
+		const errors = []
+		for (const item of attempted.slice().reverse()) {
+			try {
+				if (item.original === null) {
+					if (existsSync(item.patchFile)) unlinkSync(item.patchFile)
+					if (existsSync(item.patchFile)) throw new Error('原文件不存在，但回滚后文件仍存在')
+				} else {
+					writeFileAtomic(item.patchFile, item.original)
+					if (!readFileSync(item.patchFile).equals(item.original)) throw new Error('回滚后内容与原始文件不一致')
+				}
+			} catch (error) { errors.push(item.name + '（' + String(error.message || error) + '）') }
+		}
+		return errors
+	}
+	for (const target of snapshots) {
+		// 在第一次可能覆盖之前登记当前项，写后复检失败也必须恢复它。
+		attempted.push(target)
 		try {
-			if (existsSync(patchFile)) copyFileSync(patchFile, patchFile + '.empty-' + Date.now())
-			copyFileSync(join(dir, backups[0]), patchFile)
-			restored.push(name + ' <- ' + backups[0])
+			copyFileSync(target.source, target.patchFile)
+			const verified = typeof options.verify === 'function'
+				? options.verify(target) === true
+				: readFileSync(target.patchFile).equals(target.expected)
+			if (!verified) throw new Error('恢复后内容与备份不一致')
+			completed.push(target)
 		} catch (error) {
-			return { ok: false, message: '恢复失败（' + name + '）：' + String(error && error.message ? error.message : error) }
+			const errors = rollback()
+			return { ok: false, restored: errors.length === 0, backup: target.backup,
+				message: '恢复或复检失败（' + target.name + '）：' + String(error.message || error) + (errors.length === 0 ? '；当前项及此前改动已逐项读回并恢复。' : '；以下项目未通过恢复复检：' + errors.join('、')) }
 		}
 	}
-	if (restored.length === 0) return { ok: true, unchanged: true, message: '没有需要恢复的 patch 层。' }
-	return {
-		ok: true,
-		verified: true,
-		message: '已恢复 ' + restored.length + ' 个 profile 的 cordis.patch.yml：' + restored.join('、') + '。重启桌面端生效。',
-	}
+	return { ok: true, verified: true, backup: snapshots[0].backup,
+		message: '已按备份逐字复检并恢复 ' + completed.length + ' 个 patch 层：' + completed.map(item => item.name + ' <- ' + item.backupName).join('、') + '。重启桌面端生效。' }
 }
 
 function fixWorkspaceAcl() {
@@ -1614,40 +1810,40 @@ function fixWorkspaceAclUnlocked() {
 		if (!existsSync(target)) continue
 		const probe = join(target, '.dsh-doctor-write-test-' + process.pid + '-' + Date.now() + '.tmp')
 		let writable = true
-		try {
-			writeFileSync(probe, 'ok', 'utf8')
-		} catch (error) {
-			writable = false
-		} finally {
-			try { unlinkSync(probe) } catch (error) { /* ignore */ }
-		}
+		try { writeFileSync(probe, 'ok', 'utf8') } catch (error) { writable = false }
+		finally { try { unlinkSync(probe) } catch (error) { /* ignore */ } }
 		if (writable) continue
-		const backupFile = join(backupDir(), 'workspace-acl-' + Date.now() + '.txt')
-		const save = powershell('icacls ' + quote(target) + ' /save ' + quote(backupFile))
+
+		const stamp = Date.now() + '-' + randomBytes(6).toString('hex')
+		const jsonBackup = join(backupDir(), 'workspace-acl-' + stamp + '.json')
+		const nativeBackup = join(backupDir(), 'workspace-acl-' + stamp + '.txt')
+		let backup = null
+		let restore = null
+		const saved = doctorSys('acl-save', { path: target, file: jsonBackup })
+		if (saved !== null && saved.ok === true && existsSync(jsonBackup)) {
+			backup = jsonBackup
+			restore = () => doctorSys('acl-restore', { file: jsonBackup })
+		} else {
+			const save = powershell('icacls ' + quote(target) + ' /save ' + quote(nativeBackup))
+			if (save.ok && existsSync(nativeBackup)) {
+				backup = nativeBackup
+				restore = () => powershell('icacls ' + quote(dirname(target)) + ' /restore ' + quote(nativeBackup))
+			}
+		}
+		if (backup === null) { failed.push(target + '：ACL 备份失败，未修改'); continue }
 		const grant = powershell('icacls ' + quote(target) + ' /grant "*' + sid + ':(OI)(CI)F" /C')
 		let verified = false
-		try {
-			writeFileSync(probe, 'ok', 'utf8')
-			verified = true
-		} catch (error) {
-			verified = false
-		} finally {
-			try { unlinkSync(probe) } catch (error) { /* ignore */ }
-		}
-		if (verified) repaired.push(target + (save.ok ? ' (备份 ' + backupFile + ')' : ''))
-		else failed.push(target + '：' + (grant.err || grant.out || '仍然写不进去'))
+		try { writeFileSync(probe, 'ok', 'utf8'); verified = true } catch (error) { verified = false }
+		finally { try { unlinkSync(probe) } catch (error) { /* ignore */ } }
+		if (grant.ok && verified) { repaired.push(target + '（备份 ' + backup + '）'); continue }
+		const restored = restore()
+		const rollbackOk = restored !== null && restored.ok === true
+		failed.push(target + '：' + (grant.err || grant.out || '仍然写不进去') + (rollbackOk
+			? '；已执行 ACL 恢复，请重新体检确认' : '；恢复未确认，请立即使用备份人工恢复：' + backup))
 	}
-	if (repaired.length === 0 && failed.length === 0) {
-		return { ok: true, unchanged: true, message: '所有工作区都可写，不需要修。' }
-	}
-	if (failed.length > 0) {
-		return { ok: false, message: '部分工作区仍然不可写：' + failed.join('；') }
-	}
-	return {
-		ok: true,
-		verified: true,
-		message: '已给当前账号补上完全控制并复测通过：' + repaired.join('、') + '。重启桌面端后生效。',
-	}
+	if (repaired.length === 0 && failed.length === 0) return { ok: true, unchanged: true, message: '所有工作区都可写，不需要修。' }
+	if (failed.length > 0) return { ok: false, message: '部分工作区修复失败：' + failed.join('；') }
+	return { ok: true, verified: true, message: '已给当前账号补上完全控制并复测通过：' + repaired.join('、') + '。' }
 }
 
 /** 在 sessions/<workspace>/<sessionId>/ 里找该会话的日志文件。 */
@@ -1691,17 +1887,28 @@ function fixPermissionTooBroad() {
 	}
 	if (targets.length === 0) return { ok: true, message: '没有 danger-full-access 的会话，不需要修。' }
 
-	const backupDir = join(dshHome(), 'dsh-doctor-backups', 'session-perm-' + Date.now())
+	const backupDir = join(dshHome(), 'dsh-doctor-backups', 'session-perm-' + Date.now() + '-' + randomBytes(6).toString('hex'))
 	try { mkdirSync(backupDir, { recursive: true }) } catch (error) { return { ok: false, message: '创建备份目录失败：' + String(error && error.message ? error.message : error) } }
 	try { copyFileSync(cacheFile, join(backupDir, 'session_projcache.json')) } catch (error) { return { ok: false, message: '备份投影缓存失败：' + String(error && error.message ? error.message : error) } }
 
 	const currentSession = typeof process.env.DSH_SESSION_ID === 'string' ? process.env.DSH_SESSION_ID : ''
+	if (typeof zlib.zstdCompressSync !== 'function' || zstdDecompress === null) return { ok: false, message: '当前 Node 不支持 zstd，不能安全修改会话日志；请在各会话用 /permission 调整。' }
 	const fixed = []
 	const skipped = []
+	const changed = []
+	const rollback = () => {
+		const errors = []
+		for (const item of changed.slice().reverse()) {
+			try { copyFileSync(item.backup, item.file) } catch (error) { errors.push(item.sessionId) }
+		}
+		try { copyFileSync(join(backupDir, 'session_projcache.json'), cacheFile) } catch (error) { errors.push('session_projcache.json') }
+		return errors
+	}
 	for (const target of targets) {
 		if (target.sessionId === currentSession) { skipped.push(target.sessionId + '（当前会话）'); continue }
 		const file = findSessionFile(target.sessionId)
 		if (file === null) { skipped.push(target.sessionId + '（找不到会话日志）'); continue }
+		const backup = join(backupDir, target.sessionId + '.zstd')
 		try {
 			const text = decodeZstdFile(file)
 			if (text === null) throw new Error('zstd 解压失败')
@@ -1716,7 +1923,7 @@ function fixPermissionTooBroad() {
 				} catch (error) { /* 跳过坏行 */ }
 			}
 			if (lastPreset === 'workspace-write') { skipped.push(target.sessionId + '（已经是安全权限）'); continue }
-			copyFileSync(file, join(backupDir, target.sessionId + '.zstd'))
+			copyFileSync(file, backup)
 			const now = Date.now()
 			const appended = [
 				{ type: 'permission/preset', seq: maxSeq + 1, time: now, data: { preset: 'workspace-write' } },
@@ -1724,18 +1931,36 @@ function fixPermissionTooBroad() {
 				{ type: 'approval/policy', seq: maxSeq + 3, time: now, data: { policy: 'ask' } },
 			].map(event => JSON.stringify(event)).join('\n') + '\n'
 			appendFileSync(file, zlib.zstdCompressSync(Buffer.from(appended, 'utf8')))
+			const verified = decodeZstdFile(file)
+			if (verified === null || !verified.includes('"preset":"workspace-write"') || !verified.includes('"policy":"ask"')) throw new Error('会话日志追加后无法复检')
+			changed.push({ file, backup, sessionId: target.sessionId })
 			target.row.rows.permissions.val = { preset: 'workspace-write', sandbox: 'workspace-write', approval: 'ask' }
 			fixed.push(target.sessionId)
 		} catch (error) {
-			skipped.push(target.sessionId + '（' + String(error && error.message ? error.message : error) + '）')
+			try { if (existsSync(backup)) copyFileSync(backup, file) } catch (restoreError) {
+				const errors = rollback()
+				return { ok: false, backup: backupDir, restored: errors.length === 0, message: '会话日志恢复失败：' + target.sessionId + '；请使用 ' + backupDir + ' 中的备份人工恢复。' }
+			}
+			skipped.push(target.sessionId + '（' + String(error && error.message ? error.message : error) + '，已恢复原日志）')
 		}
 	}
-	try { writeFileSync(cacheFile, JSON.stringify(cache)) } catch (error) { return { ok: false, message: '会话日志已改，但更新投影缓存失败：' + String(error && error.message ? error.message : error) + '。备份在 ' + backupDir } }
-	const parts = ['已把 ' + fixed.length + ' 个会话改成 workspace-write + ask']
+	if (fixed.length === 0) return { ok: true, unchanged: true, backup: backupDir, message: '没有可安全修改的旧会话；当前会话请用 /permission 调整。' + (skipped.length > 0 ? '跳过：' + skipped.join('；') : '') }
+	try {
+		writeFileAtomic(cacheFile, JSON.stringify(cache))
+		const verified = readJson(cacheFile)
+		for (const id of fixed) {
+			const value = verified.tables.sessions[id].rows.permissions.val
+			if (value.preset !== 'workspace-write' || value.sandbox !== 'workspace-write' || value.approval !== 'ask') throw new Error('投影缓存复检失败：' + id)
+		}
+	} catch (error) {
+		const errors = rollback()
+		return { ok: false, backup: backupDir, restored: errors.length === 0, message: '投影缓存更新或复检失败：' + String(error.message || error) + (errors.length === 0 ? '；日志和缓存均已从备份恢复。' : '；以下文件未恢复：' + errors.join('、')) }
+	}
+	const parts = ['已把并复检 ' + fixed.length + ' 个会话改成 workspace-write + ask']
 	if (skipped.length > 0) parts.push('跳过 ' + skipped.length + ' 个：' + skipped.slice(0, 5).join('；') + (skipped.length > 5 ? ' 等' : ''))
 	parts.push('会话日志与投影缓存已备份到 ' + backupDir)
 	parts.push('重开/重启这些会话后生效；当前会话请用 /permission 自己切换')
-	return { ok: fixed.length > 0, message: parts.join('。') }
+	return { ok: true, verified: true, backup: backupDir, message: parts.join('。') }
 }
 
 const FIXES = {
@@ -2043,7 +2268,7 @@ function acquireRescueLock() {
 			if (age < 180000) return { busy: true }
 			try { unlinkSync(file) } catch (error) { /* 过期锁清掉 */ }
 		}
-		writeFileSync(file, String(process.pid), 'utf8')
+		writeFileSync(file, String(process.pid), { encoding: 'utf8', flag: 'wx' })
 		return { file }
 	} catch (error) {
 		return { error: String(error && error.message ? error.message : error) }
@@ -2051,7 +2276,9 @@ function acquireRescueLock() {
 }
 
 function releaseRescueLock(file) {
-	try { unlinkSync(file) } catch (error) { /* ignore */ }
+	try {
+		if (readFileSync(file, 'utf8').trim() === String(process.pid)) unlinkSync(file)
+	} catch (error) { /* 已清理或不属于本进程 */ }
 }
 
 async function rescueWeb() {
@@ -3322,7 +3549,7 @@ async function handle(req, res) {
 				const parsed = JSON.parse(raw)
 				if (typeof parsed.id === 'string') id = parsed.id
 			} catch (error) { send(res, 400, { ok: false, message: '请求体不是合法 JSON' }); return }
-			const fix = FIXES[id]
+			const fix = Object.prototype.hasOwnProperty.call(FIXES, id) ? FIXES[id] : null
 			if (typeof fix !== 'function') { send(res, 404, { ok: false, message: '未知的修复项：' + id }); return }
 			let result = null
 			try { result = await fix() } catch (error) {
@@ -3352,10 +3579,10 @@ async function handle(req, res) {
 
 export const inject = ['workspaceRegistry']
 
-export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN, sanitizeText, readAsarJson, compareSemver, semverSatisfies, unmetDshRequirements, fixIntegrityLabelOnPath }
+export { scan, readHistory, rescueWeb, buildAiReport, writeAiReport, checkUpdate, buildDiffReport, writeDiffReport, doctorSys, doctorSysPath, LOW_LABEL_PATTERN, sanitizeText, readAsarJson, compareSemver, semverSatisfies, unmetDshRequirements, fixIntegrityLabelOnPath, fixRestorePatchLayer, loadCheckPacks, validateCheckPack, matchPackRegex }
 
 export function applyFixById(id) {
-	const fix = FIXES[id]
+	const fix = Object.prototype.hasOwnProperty.call(FIXES, id) ? FIXES[id] : null
 	if (typeof fix !== 'function') return { ok: false, message: '未知的修复项：' + id }
 	try {
 		return fix()

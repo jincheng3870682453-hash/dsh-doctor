@@ -31,6 +31,10 @@ const FIXES = [
 	['profile-host-dup', '隔离 profile 里的宿主包副本'],
 	['restore-patch-layer', '从备份恢复 cordis.patch.yml'],
 	['compact-credentials', '压缩累积的登录凭据记录'],
+	['workspace-acl', '补工作区 ACL 并复测（Windows 专用）'],
+	['permission-too-broad', '把旧会话权限降为 workspace-write + ask'],
+	['reap-zombies', '复核并回收失效的 DSH web 进程（不可回滚）'],
+	['refresh-shell', '刷新 Explorer 图标缓存通知（不可回滚）'],
 ]
 
 /** 一键修复只跑安全的修复项；移除工作区等需要用户确认的不自动做。 */
@@ -178,7 +182,7 @@ async function main() {
 	if (command === 'diff') { await showDiffReport(); return 0 }
 	if (command === 'version' || command === '--version' || command === '-v') { line(readVersion()); return 0 }
 	line('未知命令：' + command)
-	line('可用：fix-all | scan | fix <id> | history | rescue | version | （无参数进菜单）')
+	line('可用：fix-all | scan | fix <id> | history | rescue | report | diff | version | （无参数进菜单）')
 	return 2
 }
 

@@ -123,7 +123,7 @@ function Test-DoctorWorkspaceRegistry {
                 'with "working-directory: directory does not exist" at run time. Recreate the empty directory (fix), or ' +
                 'move the project back / repoint the workspace.') `
             -Evidence @('workspace.json -> ' + $entry) `
-            -Fix 'dsh-doctor fix -Id workspace-create'))
+            -Fix 'dsh-doctor fix -Id create-workspace-dir'))
     }
     return $findings.ToArray()
 }
@@ -171,6 +171,13 @@ function Test-DoctorWorkspaceLabels {
     return $findings.ToArray()
 }
 
+function Get-DoctorHostPackageNames {
+    # Scan and repair must use exactly the same set. These are provided by DSH
+    # itself and must not be duplicated inside a profile.
+    return @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis',
+        'dsh-settings', 'dsh-llm', 'dsh-credentials', 'dsh-session')
+}
+
 function Test-DoctorProfileHostDup {
     $findings = New-Object System.Collections.ArrayList
     $profilesRoot = Join-Path (Get-DshHome) 'profiles'
@@ -184,8 +191,7 @@ function Test-DoctorProfileHostDup {
         $dirs = @(Get-ChildItem -LiteralPath $profilesRoot -Recurse -Directory -Filter '@deepseek-ai' -ErrorAction SilentlyContinue)
     }
 
-    # Only these host packages trigger the "Cannot read properties of undefined" crash.
-    $criticalNames = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis', 'dsh-settings', 'dsh-llm', 'dsh-credentials', 'dsh-session')
+    $criticalNames = @(Get-DoctorHostPackageNames)
     $flagged = New-Object System.Collections.ArrayList
     foreach ($dir in $dirs) {
         if ($dir.Name -like '*.stale*') { continue }
@@ -709,6 +715,75 @@ function Test-DoctorStorageCorrupt {
     return $findings.ToArray()
 }
 
+function Test-DoctorCredentialsVersion {
+    $findings = New-Object System.Collections.ArrayList
+    foreach ($name in @('.credentials.yaml', '.credentials.yml')) {
+        $file = Join-Path (Get-DshHome) $name
+        if (-not (Test-Path -LiteralPath $file)) { continue }
+        Write-DoctorStep ('Check credentials version: ' + $file)
+        try {
+            $head = Get-Content -LiteralPath $file -Encoding UTF8 -TotalCount 100 -ErrorAction Stop
+            $text = ($head -join "`n")
+            if ($text.Length -gt 4000) { $text = $text.Substring(0, 4000) }
+        } catch {
+            [void]$findings.Add((New-Finding -Id 'credentials-unreadable' -Severity 'Medium' -Path $file `
+                -Title 'Credentials file could not be read' -Detail $_.Exception.Message))
+            continue
+        }
+        $match = [regex]::Match($text, '(?m)^\s*version\s*:\s*[''"]?([\w.-]+)[''"]?\s*$')
+        if (-not $match.Success) {
+            [void]$findings.Add((New-Finding -Id 'credentials-no-version' -Severity 'Medium' -Path $file `
+                -Title 'Credentials file has no version field' `
+                -Detail 'The host chooses a credentials parser by version. A missing field can prevent startup.'))
+        } elseif ($match.Groups[1].Value -ne '1') {
+            [void]$findings.Add((New-Finding -Id 'credentials-version' -Severity 'Low' -Path $file `
+                -Title ('Credentials version is ' + $match.Groups[1].Value + '; known working version is 1') `
+                -Detail 'A version mismatch can make the host reject this credentials file at startup.'))
+        }
+    }
+    return $findings.ToArray()
+}
+
+function Test-DoctorPatchLayer {
+    $findings = New-Object System.Collections.ArrayList
+    $profilesRoot = Join-Path (Get-DshHome) 'profiles'
+    if (-not (Test-Path -LiteralPath $profilesRoot)) { return $findings.ToArray() }
+    foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
+        if ($profile.Name -like '*.stale*') { continue }
+        $backups = @(Get-ChildItem -LiteralPath $profile.FullName -Filter 'cordis.patch.yml.bak*' -File -ErrorAction SilentlyContinue)
+        if ($backups.Count -eq 0) { continue }
+        $patchFile = Join-Path $profile.FullName 'cordis.patch.yml'
+        $size = -1
+        if (Test-Path -LiteralPath $patchFile) {
+            try { $size = (Get-Item -LiteralPath $patchFile -ErrorAction Stop).Length } catch { $size = -1 }
+        }
+        if ($size -gt 2) { continue }
+        [void]$findings.Add((New-Finding -Id 'patch-layer-missing' -Severity 'High' -Path $patchFile `
+            -Title ('Profile ' + $profile.Name + ' has an empty or missing cordis.patch.yml, but a backup exists') `
+            -Detail 'Crash recovery can empty the patch layer, removing plugin, provider and MCP configuration. restore-patch-layer backs up the current state before restoring the newest backup.' `
+            -Fix 'dsh-doctor fix -Id restore-patch-layer'))
+    }
+    return $findings.ToArray()
+}
+
+function Test-DoctorPathVariable {
+    $findings = New-Object System.Collections.ArrayList
+    $probe = Invoke-DoctorProcess -FilePath 'where.exe' -Arguments @('dsh')
+    if ($probe.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($probe.Output)) { return $findings.ToArray() }
+    $dead = New-Object System.Collections.ArrayList
+    foreach ($line in @($probe.Output -split "`r?`n")) {
+        $candidate = $line.Trim()
+        if ($candidate.Length -eq 0 -or (Test-Path -LiteralPath $candidate)) { continue }
+        if (-not $dead.Contains($candidate)) { [void]$dead.Add($candidate) }
+    }
+    if ($dead.Count -eq 0) { return $findings.ToArray() }
+    [void]$findings.Add((New-Finding -Id 'path-dead-dsh' -Severity 'Medium' `
+        -Title 'PATH contains dsh commands whose files no longer exist' `
+        -Detail ('Remove or repair the corresponding PATH directories: ' + ($dead -join ' | ')) `
+        -Evidence $dead.ToArray()))
+    return $findings.ToArray()
+}
+
 function Test-DoctorCredentialRecords {
     $findings = New-Object System.Collections.ArrayList
     $file = Join-Path (Get-DshHome) '.credentials.yaml'
@@ -1028,7 +1103,10 @@ function Invoke-DoctorScan {
         'Test-DoctorMcpEntries',
         'Test-DoctorStaleHomeBackup',
         'Test-DoctorStorageCorrupt',
+        'Test-DoctorCredentialsVersion',
         'Test-DoctorCredentialRecords',
+        'Test-DoctorPatchLayer',
+        'Test-DoctorPathVariable',
         'Test-DoctorPermissionTooBroad',
         'Test-DoctorBundleVersionSkew',
         'Test-DoctorRuntimeMetadataStale'

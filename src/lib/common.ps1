@@ -1,6 +1,10 @@
 ﻿#Requires -Version 5.1
-# Shared helpers for dsh-doctor. ASCII-only source: keep messages in English here,
-# user-facing documentation lives in README.md / docs/ (UTF-8).
+# Shared helpers for dsh-doctor. Keep this as the first EXE script part: the
+# real build.ps1 launcher invokes the concatenated file with -EnginePath.
+param([string]$EnginePath = '')
+if (-not [string]::IsNullOrWhiteSpace($EnginePath) -and (Test-Path -LiteralPath $EnginePath)) {
+    $env:DSH_DOCTOR_SYS = $EnginePath
+}
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
@@ -175,7 +179,9 @@ function Get-PathAclInfo {
                     )
                     return $result
                 }
-            } catch { /* 引擎失败就退回 Get-Acl */ }
+            } catch {
+                # 引擎失败就退回 Get-Acl。
+            }
         }
         $acl = Get-Acl -LiteralPath $Path
         $sddl = [string]$acl.Sddl

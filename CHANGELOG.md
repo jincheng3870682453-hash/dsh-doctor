@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.14.13 — 2026-11-22
+
+> npm 上从 `0.14.11` 直接跳到本版：`0.14.12` 因发布账号被 npm 安全自动化冻结而未发 npm（GitHub Release 已先行）。npm 用户实际获得的是 v0.14.12 + v0.14.13 两版内容。
+
+- **修复 EXE 引擎接线**：`src/lib/common.ps1` 增加顶层 `param(-EnginePath)` 并设置 `DSH_DOCTOR_SYS`，与 `tools/build.ps1` 的 C# 启动器约定一致；引擎失败回退 `Get-Acl` 时不再使用 PS 无法解析的 C 风格注释。拼接 EXE 行为由 `tests/rescue-integration.ps1` 全程守护。
+- **修复契约偏差**：EXE 引擎接线（`EnginePath`）、ACL 备份失败即停（fail-closed）、失败回滚复检原 SDDL、JS `fixIntegrityLabelOnPath` 单路径互斥（引擎/PowerShell 二选一）。
+- **修复类修复的回滚**：patch 恢复把"当前项"纳入回滚并逐项读回验证；宿主包隔离按来源子目录保存（多 profile 不再互相覆盖）并复检；工作区注册表、凭据压缩、会话权限修复改用原子写入并回读验证；备份文件名加随机后缀防碰撞；锁文件按 PID 归属释放。
+- **Rust doctor-sys**：`--help`/`-h` 正常退出 0；原语失败退出 1、解析失败退出 2；`selftest` 内部失败时外层 `ok:false` 且非零退出；数字参数（PID/端口/超时）接受字符串并严格校验范围；`acl-read` 空 SDDL 视为错误；`forceChildren` 收集遍历错误；`snapshot-restore` 预检全部条目（`stored` 必须位于快照 `data` 内、`original` 必须绝对路径），删除失败不再吞掉，失败条目回滚并如实报告"逐条处理、非全事务"。
+- **社区检查包边界**：加载时校验 `protocolVersion`、字段长度、修复白名单与绝对路径；`file-regex` 在专用 worker 中最多执行 1 秒（超时终止），同步 CLI/MCP 路径同样受限；拒绝反向引用、后行断言与嵌套量词；单包上限 1 MiB。
+- **PowerShell 侧**：新增 credentials 版本、patch 层、PATH 死路径检查接入 `Invoke-DoctorScan`；报告包与 JSON 输出全部经 `Get-SanitizedText` 脱敏；`list`/`help` 展示完整修复目录；`workspace-create` 保留为 `create-workspace-dir` 的兼容别名；未知命令与部分失败的修复返回非零退出码。
+- **测试与 CI**：新增 `tests/acl-recovery.test.mjs`（ACL 失败矩阵）、`tests/check-pack.test.mjs`（含正则超时）、`tests/file-fixes.test.mjs`（含当前项回滚）、`tests/rust-cli.test.mjs`（真实引擎 CLI）、`tests/powershell-regression.ps1` 与 `tests/rescue-integration.ps1`；CI 补跑 asar/compat/bridge/workspace-label 测试，Windows 不再因缺 cargo 静默跳过。
+- **发布链路**：新增 `tools/verify-release.mjs`（解包结构、版本、引擎同源、实际启动、SHA-256 清单）；插件 zip 在 CI 内置同一引擎；环境包改由主构建器统一生成并锁 Node 20；`tools/build-exe.ps1` 收敛为薄包装；`tools/push.mjs` 去掉 force 推送、要求远端 tip 是本地祖先。
+- **发行包漏 worker 修复**：环境包（`-OnlyEnvPack`）与 Unix tar（`tools/package-unix.sh` 及主构建器）此前只带 `scan-worker.mjs`，漏掉 `pack-regex-worker.mjs`——社区检查包的 `file-regex` 在发行版里会静默判为不匹配。现在统一复制 `plugin/lib/*.mjs`；`tools/verify-release.mjs` 对插件 zip / 环境包 / Unix tar 都要求该 worker 存在**并真跑一次匹配**，再也不能悄悄漏。
+- **文档**：新增 `docs/compatibility.md` 三实现能力矩阵；README/HANDOFF/catalog/protocol 明确脱敏边界、不可回滚动作与检查包约束。
+- 教训记录：本轮多轮"测试漂移"最终定位为 `tests/powershell-regression.ps1` 丢失 UTF-8 BOM——PS 5.1 在 GBK 代码页把中文注释按 ANSI 误读，函数体被切错位置。BOM 守卫此前只在 CI，今后任何 .ps1 编辑后都应本地先查 BOM。
+
 ## v0.14.12 — 2026-11-21
 
 - **新增 `workspace-low-label` / `workspace-everyone-deny`（JS + PS）**：注册的工作区（合法项目目录）被打上 Low 完整性标签或留着 Everyone 删除拒绝项时直接报出——这是桌面之外的 1 号坑。表现为：会话里编译出的 exe 继承 Low，运行期写入全失败；安装器（NSIS 等）展开时报拒绝访问；拖文件弹安全警告。

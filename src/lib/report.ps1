@@ -49,7 +49,7 @@ function ConvertTo-DoctorScanJson {
         environment = $Environment
         findings    = @($Findings)
     }
-    return ($payload | ConvertTo-Json -Depth 8)
+    return (Get-SanitizedText -Text ($payload | ConvertTo-Json -Depth 8))
 }
 
 function New-DoctorReportBundle {
@@ -114,6 +114,6 @@ function New-DoctorReportBundle {
     }
 
     $mdFile = Join-Path $OutDir 'report.md'
-    Set-Content -LiteralPath $mdFile -Value $md.ToString() -Encoding UTF8
+    Set-Content -LiteralPath $mdFile -Value (Get-SanitizedText -Text $md.ToString()) -Encoding UTF8
     return [pscustomobject]@{ Markdown = $mdFile; Json = $jsonFile; Directory = $OutDir }
 }

@@ -25,7 +25,7 @@ import { scan, readHistory, rescueWeb, applyFixById } from '../plugin/lib/index.
 const require = createRequire(import.meta.url)
 const { version: PLUGIN_VERSION } = require('../plugin/package.json')
 
-const FIX_IDS = ['desktop-label', 'workspace-label', 'workspace-entry', 'profile-host-dup', 'restore-patch-layer']
+const FIX_IDS = ['desktop-label', 'workspace-label', 'workspace-entry', 'create-workspace-dir', 'profile-host-dup', 'restore-patch-layer', 'workspace-acl', 'compact-credentials', 'permission-too-broad', 'reap-zombies', 'refresh-shell']
 
 /** 引擎原语表（封闭白名单，与 doctor-sys/README.md 一致）。 */
 const SYS_READ_OPS = ['acl-read', 'proc-list', 'port-probe', 'port-pid', 'selftest', 'version']
@@ -90,7 +90,7 @@ const TOOLS = [
 	},
 	{
 		name: 'doctor_fix',
-		description: '执行一个修复。不传 confirm=true 时只返回可用动作清单，不修改任何东西。',
+		description: '执行一个修复。不传 confirm=true 时只返回计划，不修改任何东西。文件/ACL 修复有备份与复检；reap-zombies 和 refresh-shell 不可回滚。',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -208,7 +208,7 @@ async function dispatch(method, params) {
 					ok: true,
 					dryRun: true,
 					message: '未执行。确认后带 confirm: true 再调用。',
-					plan: { id: args.id, note: '该修复会先备份再修改，可回滚。' },
+					plan: { id: args.id, note: ['reap-zombies', 'refresh-shell'].includes(args.id) ? '该动作会改变运行状态，不能回滚。' : '该修复先备份再修改并复检；失败时报告恢复结果。' },
 				})
 			}
 			return textResult(await applyFixById(args.id))

@@ -33,6 +33,8 @@ async function request(path, options = {}) {
 }
 
 async function main() {
+	const localHead = execSync('git rev-parse HEAD', { cwd: root, encoding: 'utf8' }).trim()
+	const localParents = execSync('git rev-list --parents -n 1 HEAD', { cwd: root, encoding: 'utf8' }).trim().split(/\s+/).slice(1)
 	const listing = execSync('git ls-tree -r HEAD', { cwd: root, encoding: 'utf8' })
 	const entries = []
 	for (const line of listing.split(/\r?\n/)) {
@@ -49,6 +51,7 @@ async function main() {
 	console.log('files: ' + entries.length)
 
 	const refProbe = await request(`/repos/${owner}/${repo}/git/ref/heads/main`)
+	let remoteParent = null
 	if (!refProbe.ok) {
 		console.log('bootstrap: creating the default branch')
 		const readme = readFileSync(resolve(root, 'README.md')).toString('base64')
@@ -57,9 +60,17 @@ async function main() {
 			body: JSON.stringify({ message: 'chore: initialize repository', content: readme }),
 		})
 		if (!boot.ok) throw new Error('bootstrap failed: ' + boot.status + ' ' + boot.text.slice(0, 300))
+		if (localParents.length === 0) throw new Error('空仓库初始化必须先在本地创建首个 commit，不能用无 parent 的远端提交替代')
+		remoteParent = localParents[0]
 	}
 
-	const tree = []
+	if (refProbe.ok) {
+		remoteParent = refProbe.data && refProbe.data.object && refProbe.data.object.sha
+		if (typeof remoteParent !== 'string' || !/^[0-9a-f]{40}$/.test(remoteParent)) throw new Error('远端 main 没有有效 commit SHA')
+		if (remoteParent === localHead) { console.log('PUSH_OK already up to date'); return }
+		// 只允许在远端当前 tip 后追加；本地历史必须先包含远端 tip。
+		execSync('git merge-base --is-ancestor ' + remoteParent + ' HEAD', { cwd: root, stdio: 'ignore' })
+	}
 	for (const entry of entries) {
 		const blob = await request(`/repos/${owner}/${repo}/git/blobs`, {
 			method: 'POST',
@@ -80,17 +91,18 @@ async function main() {
 	const message = execSync('git log -1 --pretty=%s', { cwd: root, encoding: 'utf8' }).trim()
 	const commitResult = await request(`/repos/${owner}/${repo}/git/commits`, {
 		method: 'POST',
-		body: JSON.stringify({ message, tree: treeResult.data.sha }),
+		body: JSON.stringify({ message, tree: treeResult.data.sha, ...(remoteParent === null ? {} : { parents: [remoteParent] }) }),
 	})
 	if (!commitResult.ok) throw new Error('commit failed: ' + commitResult.status + ' ' + commitResult.text.slice(0, 300))
 	console.log('commit ' + commitResult.data.sha)
 
 	const refResult = await request(`/repos/${owner}/${repo}/git/refs/heads/main`, {
 		method: 'PATCH',
-		body: JSON.stringify({ sha: commitResult.data.sha, force: true }),
+		body: JSON.stringify({ sha: commitResult.data.sha, force: false }),
 	})
 	if (!refResult.ok) throw new Error('ref failed: ' + refResult.status + ' ' + refResult.text.slice(0, 300))
 	console.log('ref ' + refResult.data.ref)
+	if (refResult.data && refResult.data.object && refResult.data.object.sha !== commitResult.data.sha) throw new Error('远端 main 在推送期间发生变化，未继续覆盖')
 	console.log('PUSH_OK https://github.com/' + owner + '/' + repo)
 }
 

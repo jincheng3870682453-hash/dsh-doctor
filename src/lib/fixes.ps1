@@ -2,41 +2,97 @@
 # Fixes for dsh-doctor. Every fix backs up first, verifies after, and prints a
 # rollback command. Nothing runs unless the caller asked for that specific fix.
 
+function Write-DoctorAclCommands {
+    param([string]$Path, [string]$BackupFile)
+    Write-DoctorInfo ('Backup command: icacls "' + $Path + '" /save "' + $BackupFile + '"')
+    Write-DoctorInfo ('Rollback command: icacls "' + (Split-Path -Parent $Path) + '" /restore "' + $BackupFile + '"')
+}
+
+function Repair-DoctorIntegrityLabel {
+    # 单路径备份、修改、复检及尽力回滚；多路径由调用方逐项处理，不宣称整批事务。
+    param([Parameter(Mandatory)][string]$Path)
+
+    $before = Get-PathAclInfo -Path $Path
+    if (-not $before.Exists) { throw ('ACL target not found: ' + $Path) }
+    if ($before.Error -or [string]::IsNullOrWhiteSpace([string]$before.Sddl)) {
+        throw ('ACL cannot be read; refusing to change it: ' + $Path + ' ' + $before.Error)
+    }
+    if (-not ($before.LowLabel -or $before.EveryoneDeny)) {
+        return [pscustomobject]@{ Success = $true; Changed = $false; BackupFile = '' }
+    }
+
+    $backupDir = New-DoctorBackupDir -Purpose 'integrity-acl'
+    $backupFile = Join-Path $backupDir ('desktop-acl-' + (Get-DoctorStamp) + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.txt')
+    $save = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($Path, '/save', $backupFile)
+    Write-DoctorStep ('ACL backup -> ' + $backupFile + ' (exit ' + $save.ExitCode + ')')
+    if ($save.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $backupFile -PathType Leaf)) {
+        throw ('ACL backup failed; nothing was changed: ' + $save.Output)
+    }
+    try {
+        if ((Get-Item -LiteralPath $backupFile -ErrorAction Stop).Length -le 0) {
+            throw ('ACL backup is empty; nothing was changed: ' + $backupFile)
+        }
+    } catch {
+        if ($_.Exception.Message -like 'ACL backup is empty*') { throw }
+        throw ('ACL backup could not be confirmed; nothing was changed: ' + $_.Exception.Message)
+    }
+    # Plain-text sibling metadata lets the interactive rollback locate the exact
+    # original target instead of assuming every ACL backup belongs to Desktop.
+    [IO.File]::WriteAllText($backupFile + '.path.txt', $Path, (New-Object Text.UTF8Encoding($false)))
+    Write-DoctorAclCommands -Path $Path -BackupFile $backupFile
+
+    $failure = ''
+    if ($before.LowLabel) {
+        $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($Path, '/setintegritylevel', '(OI)(CI)Medium')
+        if ($result.ExitCode -ne 0) { $failure = 'setintegritylevel failed: ' + $result.Output }
+        else { Write-DoctorStep ('Integrity label set to Medium: ' + $Path) }
+    }
+    if ($failure -eq '' -and $before.EveryoneDeny) {
+        $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($Path, '/remove:d', '*S-1-1-0')
+        if ($result.ExitCode -ne 0) { $failure = 'Everyone deny removal failed: ' + $result.Output }
+    }
+    if ($failure -eq '') {
+        $after = Get-PathAclInfo -Path $Path
+        if (-not $after.Exists -or $after.Error -or [string]::IsNullOrWhiteSpace([string]$after.Sddl)) {
+            $failure = 'verification could not read the ACL: ' + $after.Error
+        } elseif ($after.LowLabel) {
+            $failure = 'verification still found the Low integrity label'
+        } elseif ($after.EveryoneDeny) {
+            $failure = 'verification still found an Everyone deny ACE'
+        }
+    }
+    if ($failure -ne '') {
+        $restore = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @((Split-Path -Parent $Path), '/restore', $backupFile)
+        if ($restore.ExitCode -ne 0) {
+            $failure += '; ROLLBACK FAILED, run the rollback command above manually: ' + $restore.Output
+        } else {
+            $recovered = Get-PathAclInfo -Path $Path
+            $recoveredSddl = if ($recovered.Error) { '' } else { ([string]$recovered.Sddl -replace '\s+', '') }
+            $beforeSddl = ([string]$before.Sddl -replace '\s+', '')
+            if ($recoveredSddl.Length -gt 0 -and $recoveredSddl -eq $beforeSddl) {
+                $failure += '; rollback was verified against the original SDDL'
+            } else {
+                $failure += '; ROLLBACK UNVERIFIED: ACL did not read back as the original SDDL, run the rollback command above manually'
+            }
+        }
+        throw ('ACL repair failed for ' + $Path + ': ' + $failure)
+    }
+    return [pscustomobject]@{ Success = $true; Changed = $true; BackupFile = $backupFile }
+}
+
 function Repair-DoctorDesktopLabel {
     param([switch]$RestartExplorer)
 
     $desktop = [Environment]::GetFolderPath('Desktop')
     if ([string]::IsNullOrWhiteSpace($desktop)) { throw 'Desktop folder could not be resolved.' }
     if (-not (Test-Path -LiteralPath $desktop)) { throw ('Desktop folder not found: ' + $desktop) }
-
-    $before = Get-PathAclInfo -Path $desktop
-    if (-not ($before.LowLabel -or $before.EveryoneDeny)) {
+    $repair = Repair-DoctorIntegrityLabel -Path $desktop
+    if (-not $repair.Success) { throw 'Desktop ACL repair did not verify.' }
+    if (-not $repair.Changed) {
         Write-DoctorInfo 'Desktop ACL is already clean - nothing to do.'
         return
     }
-
-    $backupDir = New-DoctorBackupDir -Purpose 'desktop-acl'
-    $backupFile = Join-Path $backupDir 'desktop-acl.txt'
-    $save = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($desktop, '/save', $backupFile)
-    Write-DoctorStep ('ACL backup -> ' + $backupFile + ' (exit ' + $save.ExitCode + ')')
-
-    if ($before.LowLabel) {
-        $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($desktop, '/setintegritylevel', '(OI)(CI)Medium')
-        if ($result.ExitCode -ne 0) { throw ('Failed to reset integrity label: ' + $result.Output) }
-        Write-DoctorStep 'Integrity label set to Medium'
-    }
-    if ($before.EveryoneDeny) {
-        $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($desktop, '/remove:d', '*S-1-1-0')
-        Write-DoctorStep ('Removed Everyone deny ACE (exit ' + $result.ExitCode + ')')
-    }
-
-    $after = Get-PathAclInfo -Path $desktop
-    if ($after.LowLabel) { throw 'Verification failed: the Low integrity label is still present.' }
-    if ($after.EveryoneDeny) { Write-DoctorWarn 'Everyone deny ACE still present - removal did not take effect.' }
-
-    Write-DoctorInfo ('Fixed: ' + $desktop)
-    $parent = Split-Path -Parent $desktop
-    Write-DoctorInfo ('Rollback: icacls "' + $parent + '" /restore "' + $backupFile + '"')
+    Write-DoctorInfo ('Fixed: ' + $desktop + ' (Low label and Everyone deny verified absent)')
 
     if ($RestartExplorer) {
         try {
@@ -51,8 +107,6 @@ function Repair-DoctorDesktopLabel {
 }
 
 function Repair-DoctorWorkspaceLabel {
-    # 工作区被打上 Low 完整性标签：把注册表里的每个工作区目录改回 Medium，
-    # 并摘掉沙箱留下的 Everyone 删除拒绝项。先备份、改完复检（fail-closed）。
     $entries = @(Get-DshWorkspaceEntries)
     if ($entries.Count -eq 0) { Write-DoctorInfo 'No workspace entries found - nothing to do.'; return }
 
@@ -60,51 +114,24 @@ function Repair-DoctorWorkspaceLabel {
     $failed = New-Object System.Collections.ArrayList
     foreach ($entry in $entries) {
         if (-not (Test-Path -LiteralPath $entry)) { continue }
-        $before = Get-PathAclInfo -Path $entry
-        if (-not $before.Exists) { continue }
-        if ($before.Error) {
-            [void]$failed.Add($entry + ' (ACL unreadable: ' + $before.Error + ')')
-            continue
+        try {
+            $repair = Repair-DoctorIntegrityLabel -Path $entry
+            if (-not $repair.Success) { throw 'verification did not succeed' }
+            if ($repair.Changed) { [void]$repaired.Add($entry) }
+        } catch {
+            [void]$failed.Add($entry + ' (' + $_.Exception.Message + ')')
         }
-        if (-not ($before.LowLabel -or $before.EveryoneDeny)) { continue }
-
-        $backupDir = New-DoctorBackupDir -Purpose 'workspace-acl'
-        $backupFile = Join-Path $backupDir (('workspace-' + (Get-DoctorStamp) + '.txt'))
-        $save = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/save', $backupFile)
-        Write-DoctorStep ('ACL backup -> ' + $backupFile + ' (exit ' + $save.ExitCode + ')')
-
-        if ($before.LowLabel) {
-            $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/setintegritylevel', '(OI)(CI)Medium')
-            if ($result.ExitCode -ne 0) {
-                [void]$failed.Add($entry + ' (setintegritylevel: ' + $result.Output + ')')
-                continue
-            }
-            Write-DoctorStep ('Integrity label set to Medium: ' + $entry)
-        }
-        if ($before.EveryoneDeny) {
-            $result = Invoke-DoctorProcess -FilePath 'icacls.exe' -Arguments @($entry, '/remove:d', '*S-1-1-0')
-            Write-DoctorStep ('Removed Everyone deny ACE (exit ' + $result.ExitCode + '): ' + $entry)
-        }
-
-        $after = Get-PathAclInfo -Path $entry
-        if ($after.Error) {
-            [void]$failed.Add($entry + ' (verification could not read the ACL: ' + $after.Error + ')')
-            continue
-        }
-        if ($after.LowLabel) {
-            [void]$failed.Add($entry + ' (Low label still present after fix)')
-            continue
-        }
-        [void]$repaired.Add($entry)
-        Write-DoctorInfo ('Rollback: icacls "' + (Split-Path -Parent $entry) + '" /restore "' + $backupFile + '"')
     }
 
     if ($repaired.Count -eq 0 -and $failed.Count -eq 0) {
         Write-DoctorInfo 'All workspace labels are clean - nothing to do.'
         return
     }
-    foreach ($path in $repaired) { Write-DoctorInfo ('Fixed: ' + $path + ' (capability ACE kept, sandbox writes unaffected)') }
-    foreach ($item in $failed) { Write-DoctorWarn ('Failed: ' + $item) }
+    foreach ($path in $repaired) { Write-DoctorInfo ('Fixed: ' + $path + ' (Low label and Everyone deny verified absent; capability ACE kept)') }
+    if ($failed.Count -gt 0) {
+        foreach ($item in $failed) { Write-DoctorError ('Failed: ' + $item) }
+        throw ('Workspace ACL repair failed for ' + $failed.Count + ' path(s); see rollback output above.')
+    }
     if ($repaired.Count -gt 0) {
         Write-DoctorInfo 'If DSH re-applies the label after every provision, remove the workspace entry instead (fix -Id workspace-entry).'
     }
@@ -113,31 +140,36 @@ function Repair-DoctorWorkspaceLabel {
 function Repair-DoctorProfileHostDup {
     param([switch]$Yes)
 
-    $findings = @(Test-DoctorProfileHostDup)
-    $targets = @($findings | Where-Object { $_.Id -eq 'profile-host-duplicate' } | ForEach-Object { $_.Path })
-    if ($targets.Count -eq 0) {
+    $critical = @(Get-DoctorHostPackageNames)
+    $stamp = (Get-DoctorStamp) + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $quarantineRoot = Join-Path (Get-DshHome) ('dsh-doctor-backups\hostpkgs-' + $stamp)
+    $profilesRoot = Join-Path (Get-DshHome) 'profiles'
+    $candidates = New-Object System.Collections.ArrayList
+    if (Test-Path -LiteralPath $profilesRoot) {
+        foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
+            if ($profile.Name -like '*.stale*') { continue }
+            # Only the profile's actual dependency tree, not arbitrary nested
+            # packages or an existing quarantine, is a repair target.
+            $target = Join-Path $profile.FullName 'node_modules\@deepseek-ai'
+            if (-not (Test-Path -LiteralPath $target -PathType Container)) { continue }
+            foreach ($name in $critical) {
+                $packagePath = Join-Path $target $name
+                if (-not (Test-Path -LiteralPath $packagePath)) { continue }
+                $profileDir = Join-Path $quarantineRoot $profile.Name
+                [void]$candidates.Add([pscustomobject]@{
+                    Path = $packagePath; Name = $name; Profile = $profile.Name
+                    Destination = Join-Path $profileDir ($name + '.stale-' + $stamp)
+                })
+            }
+        }
+    }
+    if ($candidates.Count -eq 0) {
         Write-DoctorInfo 'No duplicate host-package folders found - nothing to do.'
         return
     }
 
-    # 只挪走宿主包副本本身，绝不整目录改名：同目录里还有插件的合法依赖。
-    $critical = @('dsh-tools', 'dsh-skill', 'schemastery', 'dsh-util-values', 'cordis')
-    $quarantine = Join-Path (Get-DshHome) ('dsh-doctor-backups\hostpkgs-' + (Get-DoctorStamp))
-    $candidates = New-Object System.Collections.ArrayList
-    foreach ($target in $targets) {
-        foreach ($name in $critical) {
-            $packagePath = Join-Path $target $name
-            if (Test-Path -LiteralPath $packagePath) { [void]$candidates.Add($packagePath) }
-        }
-    }
-    if ($candidates.Count -eq 0) {
-        Write-DoctorInfo 'No host-package copies found inside those folders - nothing to do.'
-        return
-    }
-
     Write-DoctorWarn ('Found ' + $candidates.Count + ' host-package copy/copies:')
-    foreach ($candidate in $candidates) { Write-Host ('    ' + $candidate) -ForegroundColor Yellow }
-
+    foreach ($candidate in $candidates) { Write-Host ('    ' + $candidate.Path) -ForegroundColor Yellow }
     if (-not $Yes) {
         $answer = Read-Host 'Move only these host-package copies into the doctor backup folder? [y/N]'
         if ($answer -notmatch '^(y|yes)$') {
@@ -146,24 +178,41 @@ function Repair-DoctorProfileHostDup {
         }
     }
 
-    New-Item -ItemType Directory -Force -Path $quarantine | Out-Null
     $moved = New-Object System.Collections.ArrayList
+    $failed = New-Object System.Collections.ArrayList
     foreach ($candidate in $candidates) {
         try {
-            $name = Split-Path -Leaf $candidate
-            Move-Item -LiteralPath $candidate -Destination (Join-Path $quarantine $name) -ErrorAction Stop
-            [void]$moved.Add($name)
-            Write-DoctorStep ('Quarantined: ' + $name + ' -> ' + $quarantine)
+            if (Test-Path -LiteralPath $candidate.Destination) { throw ('quarantine destination already exists: ' + $candidate.Destination) }
+            $parent = Split-Path -Parent $candidate.Destination
+            New-Item -ItemType Directory -Force -Path $parent -ErrorAction Stop | Out-Null
+            Move-Item -LiteralPath $candidate.Path -Destination $candidate.Destination -ErrorAction Stop
+            if (Test-Path -LiteralPath $candidate.Path) { throw 'source still exists after move' }
+            if (-not (Test-Path -LiteralPath $candidate.Destination)) { throw 'quarantine destination was not created' }
+            [void]$moved.Add($candidate)
+            Write-DoctorStep ('Quarantined: ' + $candidate.Path + ' -> ' + $candidate.Destination)
         } catch {
-            Write-DoctorWarn ('Failed to quarantine ' + $candidate + ': ' + $_.Exception.Message)
+            [void]$failed.Add($candidate.Path + ': ' + $_.Exception.Message)
         }
     }
 
-    if ($moved.Count -gt 0) {
-        Write-DoctorInfo ('Quarantined ' + $moved.Count + ' host-package copy/copies: ' + ($moved -join ', '))
-        Write-DoctorInfo 'Other plugins in the same folder were left untouched.'
-        Write-DoctorInfo 'Now fully quit and restart the DSH desktop app.'
-        Write-DoctorInfo ('Rollback: move them back from ' + $quarantine)
+    # Re-run the real read-only check. An unreadable or remaining target is not success.
+    $remaining = @(Test-DoctorProfileHostDup | Where-Object { $_.Id -eq 'profile-host-duplicate' })
+    if ($remaining.Count -gt 0) { [void]$failed.Add('post-check still found ' + $remaining.Count + ' profile host-package folder(s)') }
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate.Path) {
+            if (-not ($failed | Where-Object { $_.StartsWith($candidate.Path + ':', [StringComparison]::OrdinalIgnoreCase) })) {
+                [void]$failed.Add($candidate.Path + ': source still exists after the operation')
+            }
+        }
+    }
+    if ($failed.Count -gt 0) {
+        foreach ($item in $failed) { Write-DoctorError ('Failed: ' + $item) }
+        throw 'Host-package quarantine did not fully verify; no partial success is reported.'
+    }
+    Write-DoctorInfo ('Quarantined and verified ' + $moved.Count + ' host-package copy/copies.')
+    Write-DoctorInfo 'Other plugins in the same folder were left untouched. Fully quit and restart DSH.'
+    foreach ($candidate in $moved) {
+        Write-DoctorInfo ('Rollback: Move-Item -LiteralPath "' + $candidate.Destination + '" -Destination "' + $candidate.Path + '"')
     }
 }
 
@@ -295,7 +344,8 @@ function Repair-DoctorMissingWorkspaces {
     }
     if ($created.Count -eq 0 -and $failed.Count -eq 0) { Write-DoctorInfo 'All workspace directories exist - nothing to do.'; return }
     foreach ($path in $created) { Write-DoctorInfo ('Created empty workspace directory: ' + $path) }
-    foreach ($path in $failed) { Write-DoctorWarn ('Could not create: ' + $path) }
+    foreach ($path in $failed) { Write-DoctorError ('Could not create: ' + $path) }
+    if ($failed.Count -gt 0) { throw ('Could not create ' + $failed.Count + ' workspace director' + $(if ($failed.Count -eq 1) { 'y' } else { 'ies' }) + '.') }
     Write-DoctorInfo 'Directories are empty; move the project back or repoint the workspace to the new location.'
 }
 
@@ -308,7 +358,7 @@ function Invoke-DoctorFixAll {
         'workspace-everyone-deny' = 'workspace-label'
         'profile-host-duplicate' = 'profile-host-dup'
         'patch-layer-missing' = 'restore-patch-layer'
-        'workspace-missing' = 'workspace-create'
+        'workspace-missing' = 'create-workspace-dir'
     }
     $wanted = New-Object System.Collections.ArrayList
     foreach ($finding in $findings) {
@@ -333,7 +383,25 @@ function Invoke-DoctorFixAll {
         }
     }
     if ($failed -eq 0) { Write-DoctorInfo '一键修复完成。' }
-    else { Write-DoctorWarn ('一键修复完成，但有 ' + $failed + ' 项失败，请按提示单独处理。') }
+    else { throw ('一键修复有 ' + $failed + ' 项失败，请按上面的备份/还原命令处理。') }
+}
+
+function Get-DoctorFixCatalog {
+    return @(
+        [pscustomobject]@{ Id = 'desktop-label'; Description = 'Reset Desktop Low integrity label and Everyone deny ACE' },
+        [pscustomobject]@{ Id = 'workspace-label'; Description = 'Reset workspace Low integrity labels and Everyone deny ACEs' },
+        [pscustomobject]@{ Id = 'workspace-entry'; Description = 'Back up and remove risky workspace registry entries' },
+        [pscustomobject]@{ Id = 'create-workspace-dir'; Description = 'Create missing registered workspace directories (legacy alias: workspace-create)' },
+        [pscustomobject]@{ Id = 'profile-host-dup'; Description = 'Quarantine duplicate host packages, preserving profile names' },
+        [pscustomobject]@{ Id = 'restore-patch-layer'; Description = 'Restore an empty or missing cordis.patch.yml from its backup' },
+        [pscustomobject]@{ Id = 'clear-cookies'; Description = 'Back up and clear accumulated DSH cookies (DSH must be stopped)' }
+    )
+}
+
+function Show-DoctorFixCatalog {
+    foreach ($fix in @(Get-DoctorFixCatalog)) {
+        Write-Host ($fix.Id.PadRight(22) + $fix.Description)
+    }
 }
 
 function Invoke-DoctorFix {
@@ -365,14 +433,18 @@ function Invoke-DoctorFix {
         'clear-cookies' {
             Repair-DoctorCookies
         }
+        'create-workspace-dir' {
+            Repair-DoctorMissingWorkspaces
+        }
         'workspace-create' {
+            # v0.14.x 兼容别名；新脚本统一使用 JS 侧同一 ID。
             Repair-DoctorMissingWorkspaces
         }
         'workspace-label' {
             Repair-DoctorWorkspaceLabel
         }
         default {
-            throw ('Unknown fix id: ' + $Id + '. Known ids: desktop-label, workspace-label, profile-host-dup, workspace-entry, workspace-create, restore-patch-layer, clear-cookies.')
+            throw ('Unknown fix id: ' + $Id + '. Run "dsh-doctor.cmd list" for the complete fix catalog.')
         }
     }
 }
