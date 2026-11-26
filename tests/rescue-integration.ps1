@@ -125,4 +125,5 @@ foreach ($file in $files) {
     Assert-True ($errors.Count -eq 0) ($file + ' has syntax errors: ' + ($errors -join '; '))
 }
 Write-Host 'PASS UTF8 BOM and PS5.1 parser checks'
+$global:LASTEXITCODE = 0
 Write-Host 'rescue-integration OK'

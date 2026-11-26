@@ -203,4 +203,5 @@ Write-Host 'PASS JSON and report-bundle privacy'
 
 # Restore the workspace fix's real implementation for any caller of this test.
 . (Join-Path $root 'src\lib\fixes.ps1')
+$global:LASTEXITCODE = 0
 Write-Host 'powershell-regression OK'
