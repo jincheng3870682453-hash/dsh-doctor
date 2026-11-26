@@ -15,7 +15,7 @@
 - **发布链路**：新增 `tools/verify-release.mjs`（解包结构、版本、引擎同源、实际启动、SHA-256 清单）；插件 zip 在 CI 内置同一引擎；环境包改由主构建器统一生成并锁 Node 20；`tools/build-exe.ps1` 收敛为薄包装；`tools/push.mjs` 去掉 force 推送、要求远端 tip 是本地祖先。
 - **发行包漏 worker 修复**：环境包（`-OnlyEnvPack`）与 Unix tar（`tools/package-unix.sh` 及主构建器）此前只带 `scan-worker.mjs`，漏掉 `pack-regex-worker.mjs`——社区检查包的 `file-regex` 在发行版里会静默判为不匹配。现在统一复制 `plugin/lib/*.mjs`；`tools/verify-release.mjs` 对插件 zip / 环境包 / Unix tar 都要求该 worker 存在**并真跑一次匹配**，再也不能悄悄漏。
 - **文档**：新增 `docs/compatibility.md` 三实现能力矩阵；README/HANDOFF/catalog/protocol 明确脱敏边界、不可回滚动作与检查包约束。
-- 教训记录：本轮多轮"测试漂移"最终定位为 `tests/powershell-regression.ps1` 丢失 UTF-8 BOM——PS 5.1 在 GBK 代码页把中文注释按 ANSI 误读，函数体被切错位置。BOM 守卫此前只在 CI，今后任何 .ps1 编辑后都应本地先查 BOM。
+- 教训记录：本轮多轮"测试漂移"最终定位为 `tests/powershell-regression.ps1` 丢失 UTF-8 BOM——PS 5.1 在 GBK 代码页把中文注释按 ANSI 误读，函数体被切错位置。BOM 守卫此前只在 CI，今后任何 .ps1 编辑后都应本地先查 BOM。后来又抓到一次"修 BOM 修出残渣"：文件头 BOM 有，但第二行开头又插了一个 U+FEFF，CI 用 `-command ". 'script'"` 点源执行时报 `﻿#Requires` 不是命令；守卫已升级为「字节 0 处只允许一个 BOM，正文里再出现 EF BB BF 即失败」，本地 `tests/rescue-integration.ps1` 同步检查。
 
 ## v0.14.12 — 2026-11-21
 

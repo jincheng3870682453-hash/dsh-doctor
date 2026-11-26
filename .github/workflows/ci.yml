@@ -54,7 +54,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: All .ps1 keep a UTF-8 BOM (PS 5.1 on GBK codepages needs it)
+      - name: All .ps1 keep exactly one UTF-8 BOM at byte 0 (PS 5.1 on GBK codepages needs it)
         shell: pwsh
         run: |
           $bad = @()
@@ -63,10 +63,14 @@ jobs:
             ForEach-Object {
               $bytes = [IO.File]::ReadAllBytes($_.FullName)
               $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-              if (-not $hasBom) { $bad += $_.FullName }
+              if (-not $hasBom) { $bad += $_.FullName; return }
+              # 文件中间再出现 EF BB BF 会被 PS 5.1 当命令字符；这种"修 BOM 修出来的残渣"必须拦下。
+              for ($i = 3; $i -le $bytes.Length - 3; $i++) {
+                if ($bytes[$i] -eq 0xEF -and $bytes[$i + 1] -eq 0xBB -and $bytes[$i + 2] -eq 0xBF) { $bad += ($_.FullName + ' (stray BOM at byte ' + $i + ')'); break }
+              }
             }
-          if ($bad.Count -gt 0) { throw ('missing UTF-8 BOM: ' + ($bad -join ', ')) }
-          Write-Host 'all .ps1 files have UTF-8 BOM'
+          if ($bad.Count -gt 0) { throw ('bad UTF-8 BOM: ' + ($bad -join ', ')) }
+          Write-Host 'all .ps1 files have exactly one UTF-8 BOM at byte 0'
       - name: PS 5.1
         shell: powershell
         run: ./tests/smoke.ps1

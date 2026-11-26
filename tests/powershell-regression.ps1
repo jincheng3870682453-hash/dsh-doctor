@@ -1,5 +1,4 @@
 ﻿#Requires -Version 5.1
-﻿#Requires -Version 5.1
 # Isolated PowerShell regressions. No real DSH_HOME, Desktop, ACL or process is changed.
 param([string]$FixtureRoot = '')
 $ErrorActionPreference = 'Stop'

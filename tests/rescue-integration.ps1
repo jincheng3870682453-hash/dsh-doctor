@@ -114,6 +114,12 @@ foreach ($file in $files) {
     $bytes = [IO.File]::ReadAllBytes($path)
     $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191
     Assert-True $bom ($file + ' has no UTF8 BOM; PS5.1 would misread Chinese')
+    # 文件中间再出现 EF BB BF（常见于"补 BOM"补错位置）会被 PS5.1 当命令字符，必须拦下。
+    $stray = -1
+    for ($i = 3; $i -le $bytes.Length - 3; $i++) {
+        if ($bytes[$i] -eq 239 -and $bytes[$i + 1] -eq 187 -and $bytes[$i + 2] -eq 191) { $stray = $i; break }
+    }
+    Assert-True ($stray -lt 0) ($file + ' has a stray UTF8 BOM at byte ' + $stray + '; PS5.1 would treat it as a command')
     $tokens = $null; $errors = $null
     $null = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
     Assert-True ($errors.Count -eq 0) ($file + ' has syntax errors: ' + ($errors -join '; '))
